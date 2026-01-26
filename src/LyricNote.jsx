@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   collection,
   doc,
@@ -11,107 +11,173 @@ import {
 } from "firebase/firestore";
 import { db, auth } from "./firebase";
 
-const LyricNote = () => {
-  const [songs, setSongs] = useState([]);
-  const [currentSong, setCurrentSong] = useState(null);
+/* =====================
+   utils
+===================== */
+const getSessionId = () => {
+  const p = new URLSearchParams(window.location.search);
+  return p.get("session");
+};
+
+/* =====================
+   Component
+===================== */
+export default function LyricNote() {
+  const [sessionId, setSessionId] = useState(null);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
-  const [memos, setMemos] = useState("");
-  const [bpm, setBpm] = useState(120);
-  const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState("");
-  const [isTyping, setIsTyping] = useState(false);
+  const [chatMessages, setChatMessages] = useState([]);
 
   const typingTimer = useRef(null);
 
-  /* ======================
-     セッション一覧同期
-  ====================== */
+  /* =====================
+     初期ロード
+  ===================== */
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, "sessions"), snap => {
-      setSongs(
+    const sid = getSessionId();
+    if (sid) {
+      setSessionId(sid);
+    } else {
+      createSession();
+    }
+  }, []);
+
+  /* =====================
+     セッション作成
+  ===================== */
+  const createSession = async () => {
+    const ref = doc(collection(db, "sessions"));
+    await setDoc(ref, {
+      title: "Untitled Session",
+      content: "",
+      createdAt: serverTimestamp()
+    });
+    window.history.replaceState(null, "", `?session=${ref.id}`);
+    setSessionId(ref.id);
+  };
+
+  /* =====================
+     リアルタイム編集
+  ===================== */
+  useEffect(() => {
+    if (!sessionId) return;
+
+    const unsub = onSnapshot(doc(db, "sessions", sessionId), snap => {
+      const d = snap.data();
+      if (!d) return;
+      setTitle(d.title);
+      setContent(d.content);
+    });
+
+    return () => unsub();
+  }, [sessionId]);
+
+  const handleContentChange = e => {
+    const v = e.target.value;
+    setContent(v);
+
+    clearTimeout(typingTimer.current);
+    typingTimer.current = setTimeout(() => {
+      setDoc(
+        doc(db, "sessions", sessionId),
+        {
+          content: v,
+          updatedAt: serverTimestamp()
+        },
+        { merge: true }
+      );
+    }, 500);
+  };
+
+  /* =====================
+     チャット同期
+  ===================== */
+  useEffect(() => {
+    if (!sessionId) return;
+
+    const q = query(
+      collection(db, "sessions", sessionId, "chat"),
+      orderBy("createdAt")
+    );
+
+    const unsub = onSnapshot(q, snap => {
+      setChatMessages(
         snap.docs.map(d => ({
           id: d.id,
           ...d.data()
         }))
       );
     });
-    return unsub;
-  }, []);
 
-  /* ======================
-     現在セッション同期
-  ====================== */
-  useEffect(() => {
-    if (!currentSong) return;
+    return () => unsub();
+  }, [sessionId]);
 
-    const unsub = onSnapshot(
-      doc(db, "sessions", currentSong.id),
-      snap => {
-        const d = snap.data();
-        if (!d) return;
-        setTitle(d.title);
-        setContent(d.content);
-        setMemos(d.memos);
-        setBpm(d.bpm);
+  const sendMessage = async () => {
+    if (!chatInput.trim()) return;
+
+    await addDoc(
+      collection(db, "sessions", sessionId, "chat"),
+      {
+        user: auth.currentUser.uid.slice(0, 6),
+        message: chatInput,
+        createdAt: serverTimestamp()
       }
     );
-
-    return unsub;
-  }, [currentSong]);
-
-  /* ======================
-     自動保存（デバウンス）
-  ====================== */
-  useEffect(() => {
-    if (!currentSong || isTyping) return;
-
-    setDoc(
-      doc(db, "sessions", currentSong.id),
-      {
-        title,
-        content,
-        memos,
-        bpm,
-        updatedAt: serverTimestamp(),
-        uid: auth.currentUser.uid
-      },
-      { merge: true }
-    );
-  }, [title, content, memos, bpm, isTyping]);
-
-  const handleContent = e => {
-    setContent(e.target.value);
-    setIsTyping(true);
-    clearTimeout(typingTimer.current);
-    typingTimer.current = setTimeout(() => setIsTyping(false), 800);
+    setChatInput("");
   };
 
-  /* ======================
-     新規セッション
-  ====================== */
-  const createNewSession = async () => {
-    const ref = doc(collection(db, "sessions"));
-    await setDoc(ref, {
-      title: "New Session",
-      content: "",
-      memos: "",
-      bpm: 120,
-      createdAt: serverTimestamp()
-    });
-    setCurrentSong({ id: ref.id });
+  /* =====================
+     招待リンク
+  ===================== */
+  const share = () => {
+    const url = `${window.location.origin}?session=${sessionId}`;
+    navigator.clipboard.writeText(url);
+    alert("Invite link copied");
   };
 
-  /* ======================
-     チャット同期
-  ====================== */
-  useEffect(() => {
-    if (!currentSong) return;
+  /* =====================
+     UI
+  ===================== */
+  return (
+    <div style={{ padding: 24, background: "#020617", color: "white", height: "100vh" }}>
+      <h1>🔥 Lyric Note</h1>
 
-    const q = query(
-      collection(db, "sessions", currentSong.id, "chat"),
-      orderBy("createdAt")
-    );
+      <button onClick={share}>Invite Link</button>
 
-    const unsub = onSnapshot(q, snap => {
-     
+      <div style={{ marginTop: 16 }}>
+        <input
+          value={title}
+          onChange={e => setTitle(e.target.value)}
+          placeholder="Title"
+          style={{ width: "100%", marginBottom: 8 }}
+        />
+
+        <textarea
+          value={content}
+          onChange={handleContentChange}
+          placeholder="Write lyrics together..."
+          rows={10}
+          style={{ width: "100%" }}
+        />
+      </div>
+
+      <h3>Chat</h3>
+      <div style={{ height: 120, overflowY: "auto", background: "#111", padding: 8 }}>
+        {chatMessages.map(m => (
+          <div key={m.id}>
+            <b>{m.user}</b>: {m.message}
+          </div>
+        ))}
+      </div>
+
+      <input
+        value={chatInput}
+        onChange={e => setChatInput(e.target.value)}
+        onKeyDown={e => e.key === "Enter" && sendMessage()}
+        placeholder="message"
+        style={{ width: "100%", marginTop: 8 }}
+      />
+    </div>
+  );
+}
