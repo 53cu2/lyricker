@@ -158,7 +158,7 @@ const App = () => {
           {songs.map(s => (
             <div key={s.id} onClick={() => setCurrentSongId(s.id)} className={`group p-3 rounded-lg cursor-pointer flex justify-between items-center transition-colors ${currentSongId === s.id ? 'bg-slate-700 text-white' : 'hover:bg-slate-700/50 text-slate-400'}`}>
               <div className="font-medium truncate flex-1">{s.title || 'No Title'}</div>
-              <button onClick={(e) => deleteTrack(s.id, e)} className="opacity-0 group-hover:opacity-100 p-1 hover:text-red-400"><Trash2 className="w-4 h-4" /></button>
+              <button onClick={(e) => deleteTrack(s.id, e)} className="opacity-0 group-hover:opacity-100 p-1 hover:text-red-400 transition-opacity"><Trash2 className="w-4 h-4" /></button>
             </div>
           ))}
         </div>
