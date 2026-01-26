@@ -1,247 +1,134 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
-  collection,
   doc,
   setDoc,
-  addDoc,
   onSnapshot,
-  serverTimestamp,
-  query,
-  orderBy
+  collection,
+  serverTimestamp
 } from "firebase/firestore";
-import { db, auth } from "./firebase";
-import "./LyricNote.css";
+import { auth, db } from "./firebase";
 
-/* =========================
-   Utils
-========================= */
-const getSessionIdFromURL = () => {
-  const p = new URLSearchParams(window.location.search);
-  return p.get("session");
-};
+const SECTIONS = ["intro", "verse", "chorus", "bridge"];
+const SESSION_ID = "demo-session";
 
-const genId = () => Math.random().toString(36).slice(2, 8);
-
-/* =========================
-   Component
-========================= */
 export default function LyricNote() {
-  const [sessions, setSessions] = useState([]);
-  const [currentSong, setCurrentSong] = useState(null);
+  const [username, setUsername] = useState("");
+  const [active, setActive] = useState("verse");
+  const [sections, setSections] = useState({
+    intro: "",
+    verse: "",
+    chorus: "",
+    bridge: ""
+  });
+  const [users, setUsers] = useState([]);
 
-  const [title, setTitle] = useState("");
-  const [content, setContent] = useState("");
-  const [memos, setMemos] = useState("");
-  const [bpm, setBpm] = useState(120);
-
-  const [chatInput, setChatInput] = useState("");
-  const [chatMessages, setChatMessages] = useState([]);
-
-  const saveTimer = useRef(null);
-
-  /* =========================
-     Sessions list
-  ========================= */
+  /* ===== username ===== */
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, "sessions"), snap => {
-      setSessions(
-        snap.docs.map(d => ({
-          id: d.id,
-          ...d.data()
-        }))
-      );
-    });
-    return () => unsub();
+    let name = localStorage.getItem("username");
+    if (!name) {
+      name = prompt("username?");
+      localStorage.setItem("username", name);
+    }
+    setUsername(name);
   }, []);
 
-  /* =========================
-     Load from URL
-  ========================= */
+  /* ===== realtime lyrics ===== */
   useEffect(() => {
-    const sid = getSessionIdFromURL();
-    if (sid) setCurrentSong({ id: sid });
+    const ref = doc(db, "sessions", SESSION_ID);
+    return onSnapshot(ref, snap => {
+      if (snap.exists()) {
+        setSections(snap.data().sections);
+      }
+    });
   }, []);
 
-  /* =========================
-     Realtime song sync
-  ========================= */
+  const save = next => {
+    setDoc(
+      doc(db, "sessions", SESSION_ID),
+      {
+        sections: next,
+        updatedAt: serverTimestamp()
+      },
+      { merge: true }
+    );
+  };
+
+  /* ===== presence ===== */
   useEffect(() => {
-    if (!currentSong) return;
+    if (!auth.currentUser || !username) return;
 
-    const unsub = onSnapshot(doc(db, "sessions", currentSong.id), snap => {
-      const d = snap.data();
-      if (!d) return;
-      setTitle(d.title || "");
-      setContent(d.content || "");
-      setMemos(d.memos || "");
-      setBpm(d.bpm || 120);
-    });
-
-    return () => unsub();
-  }, [currentSong]);
-
-  /* =========================
-     Realtime chat
-  ========================= */
-  useEffect(() => {
-    if (!currentSong) return;
-
-    const q = query(
-      collection(db, "sessions", currentSong.id, "chat"),
-      orderBy("createdAt")
+    const ref = doc(
+      db,
+      "sessions",
+      SESSION_ID,
+      "presence",
+      auth.currentUser.uid
     );
 
-    const unsub = onSnapshot(q, snap => {
-      setChatMessages(
-        snap.docs.map(d => ({ id: d.id, ...d.data() }))
-      );
+    setDoc(ref, {
+      name: username,
+      section: active,
+      updatedAt: serverTimestamp()
     });
+  }, [active, username]);
 
-    return () => unsub();
-  }, [currentSong]);
-
-  /* =========================
-     Actions
-  ========================= */
-  const createNewSession = async () => {
-    const id = genId();
-    await setDoc(doc(db, "sessions", id), {
-      title: "Untitled",
-      content: "",
-      memos: "",
-      bpm: 120,
-      createdAt: serverTimestamp()
-    });
-    window.history.pushState({}, "", `?session=${id}`);
-    setCurrentSong({ id });
-  };
-
-  const autoSave = data => {
-    clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => {
-      setDoc(doc(db, "sessions", currentSong.id), data, { merge: true });
-    }, 500);
-  };
-
-  const sendMessage = async () => {
-    if (!chatInput.trim()) return;
-    await addDoc(
-      collection(db, "sessions", currentSong.id, "chat"),
-      {
-        user: auth.currentUser.uid.slice(0, 6),
-        message: chatInput,
-        createdAt: serverTimestamp()
+  useEffect(() => {
+    return onSnapshot(
+      collection(db, "sessions", SESSION_ID, "presence"),
+      snap => {
+        setUsers(snap.docs.map(d => d.data()));
       }
     );
-    setChatInput("");
-  };
+  }, []);
 
-  const share = () => {
-    navigator.clipboard.writeText(
-      `${window.location.origin}?session=${currentSong.id}`
-    );
-    alert("Invite link copied");
-  };
-
-  /* =========================
-     UI
-  ========================= */
   return (
-    <div className="ln-root">
-      {/* Sidebar */}
-      <aside className="ln-side">
-        <h2>🎵 Lyric Note</h2>
-        <button onClick={createNewSession}>＋ New Session</button>
-
-        <div className="ln-sessions">
-          {sessions.map(s => (
-            <div
-              key={s.id}
-              className={
-                currentSong?.id === s.id ? "active" : ""
-              }
-              onClick={() => {
-                window.history.pushState({}, "", `?session=${s.id}`);
-                setCurrentSong({ id: s.id });
-              }}
-            >
-              {s.title || s.id}
-            </div>
+    <div className="h-screen bg-slate-950 text-slate-100 flex flex-col">
+      {/* Header */}
+      <header className="flex items-center justify-between px-6 py-3 border-b border-slate-800 bg-slate-900">
+        <h1 className="text-xl font-bold tracking-wide">Lyric Note</h1>
+        <div className="flex gap-3 text-xs text-indigo-300">
+          {users.map((u, i) => (
+            <span key={i}>
+              ✏ {u.name} ({u.section})
+            </span>
           ))}
         </div>
-      </aside>
+      </header>
 
-      {/* Main */}
-      <main className="ln-main">
-        {/* Top bar */}
-        <div className="ln-top">
-          <input
-            value={title}
-            onChange={e => {
-              setTitle(e.target.value);
-              autoSave({ title: e.target.value });
-            }}
-            className="ln-title"
-          />
+      {/* Tabs */}
+      <div className="flex gap-2 px-6 py-3 border-b border-slate-800">
+        {SECTIONS.map(s => (
+          <button
+            key={s}
+            onClick={() => setActive(s)}
+            className={`px-4 py-1 rounded-md text-sm font-semibold transition
+              ${
+                active === s
+                  ? "bg-indigo-500 text-white"
+                  : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+              }`}
+          >
+            {s.toUpperCase()}
+          </button>
+        ))}
+      </div>
 
-          <div className="ln-top-right">
-            <input
-              type="number"
-              value={bpm}
-              onChange={e => {
-                setBpm(e.target.value);
-                autoSave({ bpm: Number(e.target.value) });
-              }}
-              className="ln-bpm"
-            />
-            <button onClick={share}>Share</button>
-          </div>
-        </div>
-
-        {/* Editor */}
-        <div className="ln-editor-wrap">
-          <textarea
-            className="ln-editor"
-            value={content}
-            onChange={e => {
-              setContent(e.target.value);
-              autoSave({ content: e.target.value });
-            }}
-            placeholder="Start writing your lyrics..."
-          />
-
-          {/* Memo */}
-          <textarea
-            className="ln-memo"
-            value={memos}
-            onChange={e => {
-              setMemos(e.target.value);
-              autoSave({ memos: e.target.value });
-            }}
-            placeholder="Ideas & Rhymes..."
-          />
-        </div>
-
-        {/* Chat */}
-        <div className="ln-chat">
-          <div className="ln-chat-log">
-            {chatMessages.map(m => (
-              <div key={m.id}>
-                <b>{m.user}</b>: {m.message}
-              </div>
-            ))}
-          </div>
-
-          <div className="ln-chat-input">
-            <input
-              value={chatInput}
-              onChange={e => setChatInput(e.target.value)}
-              placeholder="message..."
-            />
-            <button onClick={sendMessage}>Send</button>
-          </div>
-        </div>
-      </main>
+      {/* Editor */}
+      <textarea
+        className="
+          flex-1 w-full resize-none bg-transparent
+          px-6 py-4 text-2xl font-bold
+          outline-none leading-relaxed
+        "
+        placeholder="Write your lyrics..."
+        value={sections[active]}
+        onChange={e => {
+          const next = { ...sections, [active]: e.target.value };
+          setSections(next);
+          save(next);
+        }}
+        spellCheck={false}
+      />
     </div>
   );
 }
