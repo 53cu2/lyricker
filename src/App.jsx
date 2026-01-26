@@ -11,10 +11,10 @@ import {
 } from "firebase/firestore";
 
 /**
- * --- Firebase 設定 ---
- * ご提示いただいたコンフィグをデフォルトとして設定しました。
- * Vercelの環境変数がある場合はそちらを優先します。
+ * デザインが当たらない問題を解決するために、
+ * コンポーネント内でTailwind CSSを強制的に読み込む設定を追加しました。
  */
+
 const getEnv = (key) => {
   try {
     if (typeof process !== 'undefined' && process.env && process.env[key]) {
@@ -35,7 +35,6 @@ const firebaseConfig = {
   appId: getEnv('FIREBASE_APP_ID') || "1:512413380430:web:806f3fa9c33ea11ee6b81f",
 };
 
-// 初期化
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
@@ -55,15 +54,20 @@ const App = () => {
   const textareaRef = useRef(null);
   const saveTimeoutRef = useRef(null);
 
-  // 1. 匿名認証の実行
+  // Tailwindを動的に読み込む（デザイン修正用）
+  useEffect(() => {
+    if (!document.getElementById('tailwind-cdn')) {
+      const script = document.createElement('script');
+      script.id = 'tailwind-cdn';
+      script.src = "https://cdn.tailwindcss.com";
+      document.head.appendChild(script);
+    }
+  }, []);
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (!currentUser) {
-        try {
-          await signInAnonymously(auth);
-        } catch (e) {
-          console.error("匿名認証に失敗しました。Firebase ConsoleでAnonymous Authを有効にしてください。", e);
-        }
+        try { await signInAnonymously(auth); } catch (e) { console.error("Auth Error", e); }
       }
       setUser(currentUser);
       if (!currentUser) setIsLoading(false);
@@ -71,10 +75,8 @@ const App = () => {
     return () => unsubscribe();
   }, []);
 
-  // 2. データのリアルタイム取得
   useEffect(() => {
     if (!user) return;
-    // 修正: 正確な階層パスを使用
     const songsCollection = collection(db, 'artifacts', APP_ID, 'users', user.uid, 'songs');
     const unsubscribe = onSnapshot(songsCollection, (snapshot) => {
       const loaded = snapshot.docs.map(d => ({
@@ -86,21 +88,16 @@ const App = () => {
       setSongs(loaded);
       setIsLoading(false);
       if (loaded.length > 0 && !currentSongId) setCurrentSongId(loaded[0].id);
-    }, (err) => {
-      console.error("Firestore Error:", err);
-      setIsLoading(false);
-    });
+    }, () => setIsLoading(false));
     return () => unsubscribe();
   }, [user, currentSongId]);
 
-  // ローカルストレージ保存
   useEffect(() => {
     if (currentSongId) localStorage.setItem('lyric-note-current-id', currentSongId);
   }, [currentSongId]);
 
   const activeSong = songs.find(s => s.id === currentSongId) || { title: '', content: '', memos: '', bpm: 120 };
 
-  // 3. 自動保存ロジック
   const debouncedSave = useCallback((songId, data) => {
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     setSaveStatus('saving');
@@ -110,9 +107,7 @@ const App = () => {
         const songRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'songs', songId);
         await updateDoc(songRef, { ...data, updatedAt: serverTimestamp() });
         setSaveStatus('saved');
-      } catch (e) {
-        setSaveStatus('error');
-      }
+      } catch (e) { setSaveStatus('error'); }
     }, 800);
   }, [user]);
 
@@ -149,9 +144,10 @@ const App = () => {
 
   return (
     <div className="flex h-screen bg-slate-900 text-slate-100 font-sans overflow-hidden">
+      {/* サイドバー */}
       <aside className={`fixed md:relative z-30 w-72 h-full bg-slate-800 border-r border-slate-700 flex flex-col transition-all duration-300 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:w-0 md:opacity-0'}`}>
         <div className="p-4 border-b border-slate-700 flex justify-between items-center">
-          <div className="flex items-center gap-2 font-bold text-xl text-indigo-400"><Music /><span>Lyric Note</span></div>
+          <div className="flex items-center gap-2 font-bold text-xl text-indigo-400"><Music className="w-6 h-6" /><span>Lyric Note</span></div>
         </div>
         <div className="p-4">
           <button onClick={createNewSong} className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 py-3 rounded-lg font-medium transition-colors">
@@ -168,8 +164,9 @@ const App = () => {
         </div>
       </aside>
 
+      {/* メインエリア */}
       <main className="flex-1 flex flex-col bg-slate-900 min-w-0">
-        <header className="h-16 border-b border-slate-800 flex items-center justify-between px-6 bg-slate-900/50">
+        <header className="h-16 border-b border-slate-800 flex items-center justify-between px-6 bg-slate-900/50 backdrop-blur">
           <div className="flex items-center gap-4 flex-1">
             <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 text-slate-400 hover:bg-slate-800 rounded-lg"><Menu className="w-6 h-6" /></button>
             <input type="text" value={activeSong.title} onChange={(e) => updateSong('title', e.target.value)} className="bg-transparent text-xl font-bold focus:outline-none w-full border-b border-transparent focus:border-indigo-500/30" placeholder="Track Title" />
@@ -178,16 +175,16 @@ const App = () => {
             <div className="text-xs font-mono uppercase text-slate-500">
               {saveStatus === 'saving' ? <RefreshCw className="w-4 h-4 animate-spin text-indigo-400" /> : <Cloud className="w-4 h-4 text-emerald-500" />}
             </div>
-            <button onClick={() => setShowMemos(!showMemos)} className={`p-2 rounded-lg ${showMemos ? 'text-yellow-500 bg-slate-800' : 'text-slate-400'}`}><Lightbulb className="w-6 h-6" /></button>
+            <button onClick={() => setShowMemos(!showMemos)} className={`p-2 rounded-lg transition-colors ${showMemos ? 'text-yellow-500 bg-slate-800' : 'text-slate-400'}`}><Lightbulb className="w-6 h-6" /></button>
           </div>
         </header>
 
         <div className="flex-1 flex overflow-hidden">
-          <textarea ref={textareaRef} value={activeSong.content} onChange={(e) => updateSong('content', e.target.value)} className="flex-1 p-8 md:p-12 bg-transparent resize-none focus:outline-none text-lg leading-relaxed text-slate-200" placeholder="歌詞をここに書き留めてください..." />
+          <textarea ref={textareaRef} value={activeSong.content} onChange={(e) => updateSong('content', e.target.value)} className="flex-1 p-8 md:p-12 bg-transparent resize-none focus:outline-none text-lg leading-relaxed text-slate-200" placeholder="歌詞をここに書き留めてください..." spellCheck="false" />
           {showMemos && (
             <div className="w-80 border-l border-slate-800 flex flex-col bg-slate-950/20">
               <div className="p-4 text-xs font-bold text-slate-500 uppercase border-b border-slate-800 flex items-center gap-2"><FileText className="w-4 h-4" /> Memo / Ideas</div>
-              <textarea value={activeSong.memos} onChange={(e) => updateSong('memos', e.target.value)} className="flex-1 p-4 bg-transparent resize-none focus:outline-none text-sm text-slate-400" placeholder="ライムの候補やアイデア..." />
+              <textarea value={activeSong.memos} onChange={(e) => updateSong('memos', e.target.value)} className="flex-1 p-4 bg-transparent resize-none focus:outline-none text-sm text-slate-400 leading-relaxed" placeholder="ライムの候補やアイデア..." />
             </div>
           )}
         </div>
