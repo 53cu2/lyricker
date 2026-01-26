@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
-  Music, Plus, Trash2, Menu, Lightbulb, Cloud, Check, RefreshCw, FileText
+  Music, Plus, Trash2, Menu, Lightbulb, Cloud, Check, RefreshCw, FileText, Copy, X, Hash
 } from 'lucide-react';
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { 
@@ -10,13 +10,7 @@ import {
   getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp
 } from "firebase/firestore";
 
-/**
- * --- 100% 動作保証のための設定 ---
- * 1. Tailwind CSS を CDN 経由で強制適用（ビルドエラー回避）
- * 2. Firebase コンフィグのフォールバック
- * 3. 認証待ち状態のハンドリング
- */
-
+// --- Firebase Configuration ---
 const firebaseConfig = {
   apiKey: "AIzaSyAZ62d-7q8LYljSPX0w4QOD0MxCyU9XJ1s",
   authDomain: "secu-lyrics.firebaseapp.com",
@@ -26,7 +20,6 @@ const firebaseConfig = {
   appId: "1:512413380430:web:806f3fa9c33ea11ee6b81f",
 };
 
-// 重複初期化を防止
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
@@ -40,47 +33,45 @@ const App = () => {
   const [currentSongId, setCurrentSongId] = useState(() => {
     try { return localStorage.getItem('lyric-note-id') || null; } catch (e) { return null; }
   });
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [showMemos, setShowMemos] = useState(true);
+  
+  // UI State
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [showMemos, setShowMemos] = useState(false);
   const [notification, setNotification] = useState(null);
+  
+  const textareaRef = useRef(null);
   const saveTimeoutRef = useRef(null);
 
-  // --- Tailwind 強制適用スクリプト ---
+  // --- Tailwind CDN Setup ---
   useEffect(() => {
-    const initTailwind = () => {
-      if (!document.getElementById('tailwind-cdn')) {
-        const script = document.createElement('script');
-        script.id = 'tailwind-cdn';
-        script.src = "https://cdn.tailwindcss.com";
-        document.head.appendChild(script);
-        
-        const config = document.createElement('script');
-        config.innerHTML = `
-          tailwind.config = {
-            theme: {
-              extend: {
-                colors: {
-                  slate: { 950: '#020617' }
-                }
+    if (!document.getElementById('tailwind-cdn')) {
+      const script = document.createElement('script');
+      script.id = 'tailwind-cdn';
+      script.src = "https://cdn.tailwindcss.com";
+      document.head.appendChild(script);
+      
+      const config = document.createElement('script');
+      config.innerHTML = `
+        tailwind.config = {
+          theme: {
+            extend: {
+              colors: {
+                slate: { 950: '#020617' },
+                indigo: { 500: '#6366f1', 600: '#4f46e5' }
               }
             }
           }
-        `;
-        document.head.appendChild(config);
-      }
-    };
-    initTailwind();
+        }
+      `;
+      document.head.appendChild(config);
+    }
   }, []);
 
-  // --- 認証管理 ---
+  // --- Auth & Sync ---
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (!currentUser) {
-        try {
-          await signInAnonymously(auth);
-        } catch (e) {
-          console.error("Firebase Auth Error: Please enable Anonymous Auth in Firebase Console.", e);
-        }
+        try { await signInAnonymously(auth); } catch (e) { console.error(e); }
       }
       setUser(currentUser);
       if (!currentUser) setIsLoading(false);
@@ -88,230 +79,159 @@ const App = () => {
     return () => unsubscribe();
   }, []);
 
-  // --- データ同期 (Firestore) ---
   useEffect(() => {
     if (!user) return;
-    
-    const songsPath = ['artifacts', APP_ID, 'users', user.uid, 'songs'];
-    const songsCollection = collection(db, ...songsPath);
-    
+    const songsCollection = collection(db, 'artifacts', APP_ID, 'users', user.uid, 'songs');
     const unsubscribe = onSnapshot(songsCollection, (snapshot) => {
       const loaded = snapshot.docs.map(d => ({
         id: d.id,
         ...d.data(),
         updatedAt: d.data().updatedAt?.toDate?.() || new Date()
       }));
-      
-      // 更新順にソート
       loaded.sort((a, b) => b.updatedAt - a.updatedAt);
-      
       setSongs(loaded);
       setIsLoading(false);
-      
-      // 最初の曲を選択
-      if (loaded.length > 0 && !currentSongId) {
-        setCurrentSongId(loaded[0].id);
-      }
-    }, (err) => {
-      console.error("Firestore Error:", err);
-      setIsLoading(false);
+      if (loaded.length > 0 && !currentSongId) setCurrentSongId(loaded[0].id);
     });
-
     return () => unsubscribe();
   }, [user]);
 
-  // ID保存
   useEffect(() => {
     if (currentSongId) localStorage.setItem('lyric-note-id', currentSongId);
   }, [currentSongId]);
 
-  const activeSong = songs.find(s => s.id === currentSongId) || { title: '', content: '', memos: '' };
-
-  // --- 自動保存機能 ---
-  const saveToFirebase = useCallback(async (songId, data) => {
-    if (!user || !songId) return;
-    try {
-      setSaveStatus('saving');
-      const songRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'songs', songId);
-      await updateDoc(songRef, {
-        ...data,
-        updatedAt: serverTimestamp()
-      });
-      setSaveStatus('saved');
-    } catch (e) {
-      setSaveStatus('error');
-      console.error("Save failed:", e);
-    }
-  }, [user]);
+  const activeSong = songs.find(s => s.id === currentSongId) || { title: '', content: '', memos: '', bpm: 120 };
 
   const handleUpdate = (field, value) => {
     if (!currentSongId) return;
-    
-    // UIを即時更新
     setSongs(prev => prev.map(s => s.id === currentSongId ? { ...s, [field]: value } : s));
     
-    // 保存を遅延実行（デバウンス）
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    saveTimeoutRef.current = setTimeout(() => {
-      const target = songs.find(s => s.id === currentSongId);
-      if (target) {
-        const { id, updatedAt, ...saveData } = { ...target, [field]: value };
-        saveToFirebase(currentSongId, saveData);
-      }
+    setSaveStatus('saving');
+    saveTimeoutRef.current = setTimeout(async () => {
+      try {
+        const songRef = doc(db, 'artifacts', APP_ID, 'users', user.uid, 'songs', currentSongId);
+        await updateDoc(songRef, { [field]: value, updatedAt: serverTimestamp() });
+        setSaveStatus('saved');
+      } catch (e) { setSaveStatus('error'); }
     }, 1000);
+  };
+
+  const insertTag = (tag) => {
+    const el = textareaRef.current;
+    if (!el) return;
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    const text = activeSong.content || '';
+    const tagText = `[${tag}]\n`;
+    const newContent = text.substring(0, start) + tagText + text.substring(end);
+    handleUpdate('content', newContent);
+    setTimeout(() => {
+      el.focus();
+      el.setSelectionRange(start + tagText.length, start + tagText.length);
+    }, 10);
   };
 
   const addNewTrack = async () => {
     if (!user) return;
     try {
-      const songsCollection = collection(db, 'artifacts', APP_ID, 'users', user.uid, 'songs');
-      const docRef = await addDoc(songsCollection, {
-        title: 'New Track',
-        content: '',
-        memos: '',
-        updatedAt: serverTimestamp()
+      const docRef = await addDoc(collection(db, 'artifacts', APP_ID, 'users', user.uid, 'songs'), {
+        title: 'New Track', content: '', memos: '', bpm: 120, updatedAt: serverTimestamp()
       });
       setCurrentSongId(docRef.id);
+      setIsSidebarOpen(false);
       setNotification("作成しました");
       setTimeout(() => setNotification(null), 2000);
-    } catch (e) {
-      console.error("Create error:", e);
-    }
+    } catch (e) {}
   };
 
-  const deleteTrack = async (id, e) => {
-    e.stopPropagation();
-    if (!window.confirm("このトラックを削除しますか？")) return;
-    try {
-      await deleteDoc(doc(db, 'artifacts', APP_ID, 'users', user.uid, 'songs', id));
-      if (currentSongId === id) setCurrentSongId(null);
-    } catch (e) {
-      console.error("Delete error:", e);
-    }
+  const copyToClipboard = () => {
+    const text = `${activeSong.title}\nBPM: ${activeSong.bpm}\n\n${activeSong.content}`;
+    const el = document.createElement('textarea');
+    el.value = text;
+    document.body.appendChild(el);
+    el.select();
+    document.execCommand('copy');
+    document.body.removeChild(el);
+    setNotification("コピーしました");
+    setTimeout(() => setNotification(null), 2000);
   };
 
-  if (isLoading) {
-    return (
-      <div className="h-screen w-full bg-slate-950 flex items-center justify-center">
-        <RefreshCw className="w-8 h-8 text-indigo-500 animate-spin" />
-      </div>
-    );
-  }
+  if (isLoading) return <div className="h-screen bg-slate-950 flex items-center justify-center"><RefreshCw className="w-8 h-8 text-indigo-500 animate-spin" /></div>;
+
+  const tags = ['Intro', 'Verse', 'Hook', 'Chorus', 'Bridge', 'Outro'];
 
   return (
-    <div className="flex h-screen bg-slate-950 text-slate-100 font-sans overflow-hidden select-none">
-      {/* サイドバー */}
-      <aside className={`fixed md:relative z-40 h-full bg-slate-900 border-r border-slate-800 transition-all duration-300 ${isSidebarOpen ? 'w-72' : 'w-0 -translate-x-full md:translate-x-0'}`}>
-        <div className="flex flex-col h-full w-72">
-          <div className="p-6 border-b border-slate-800 flex items-center gap-3">
-            <div className="w-8 h-8 bg-indigo-600 rounded flex items-center justify-center">
-              <Music className="w-5 h-5 text-white" />
-            </div>
-            <h1 className="font-bold text-xl tracking-tight">Lyric Note</h1>
-          </div>
-          
-          <div className="p-4">
-            <button 
-              onClick={addNewTrack}
-              className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 py-3 rounded-lg font-bold transition-all active:scale-95"
-            >
-              <Plus className="w-5 h-5" /> New Track
-            </button>
-          </div>
+    <div className="flex h-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
+      {/* Sidebar Overlay (Mobile) */}
+      {isSidebarOpen && <div onClick={() => setIsSidebarOpen(false)} className="fixed inset-0 bg-black/60 z-40 md:hidden animate-in fade-in duration-200" />}
 
-          <div className="flex-1 overflow-y-auto px-3 space-y-1 custom-scrollbar">
-            {songs.map(song => (
-              <div 
-                key={song.id}
-                onClick={() => setCurrentSongId(song.id)}
-                className={`group p-3 rounded-lg cursor-pointer flex justify-between items-center transition-all ${
-                  currentSongId === song.id ? 'bg-slate-800 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-800/50'
-                }`}
-              >
-                <span className="truncate font-medium">{song.title || 'Untitled'}</span>
-                <button 
-                  onClick={(e) => deleteTrack(song.id, e)}
-                  className="p-1.5 opacity-0 group-hover:opacity-100 hover:text-red-400 transition-all"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+      {/* Sidebar */}
+      <aside className={`fixed md:relative z-50 h-full bg-slate-900 border-r border-slate-800 transition-all duration-300 shadow-2xl ${isSidebarOpen ? 'w-72' : 'w-0 -translate-x-full md:translate-x-0 md:w-64'}`}>
+        <div className="flex flex-col h-full w-72 md:w-64">
+          <div className="p-5 border-b border-slate-800 flex items-center justify-between">
+            <div className="flex items-center gap-2 font-black text-lg tracking-tighter text-indigo-400"><Music className="w-5 h-5" />LYRIC NOTE</div>
+            <button onClick={() => setIsSidebarOpen(false)} className="md:hidden p-1 hover:bg-slate-800 rounded-full"><X className="w-5 h-5" /></button>
+          </div>
+          <div className="p-4"><button onClick={addNewTrack} className="w-full bg-indigo-600 hover:bg-indigo-500 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg shadow-indigo-600/20"><Plus className="w-5 h-5" />New Track</button></div>
+          <div className="flex-1 overflow-y-auto px-2 space-y-1 pb-10">
+            {songs.map(s => (
+              <div key={s.id} onClick={() => { setCurrentSongId(s.id); setIsSidebarOpen(false); }} className={`group p-3 rounded-xl cursor-pointer flex items-center justify-between transition-all ${currentSongId === s.id ? 'bg-slate-800 text-white shadow-inner' : 'text-slate-500 hover:bg-slate-800/40'}`}>
+                <span className="truncate font-medium text-sm">{s.title || 'Untitled'}</span>
+                <button onClick={(e) => { e.stopPropagation(); if(confirm('削除しますか？')) deleteDoc(doc(db, 'artifacts', APP_ID, 'users', user.uid, 'songs', s.id)); }} className="opacity-0 group-hover:opacity-100 p-1 hover:text-red-400 transition-all"><Trash2 className="w-4 h-4" /></button>
               </div>
             ))}
           </div>
         </div>
       </aside>
 
-      {/* メイン編集エリア */}
-      <main className="flex-1 flex flex-col min-w-0 bg-slate-950">
-        <header className="h-16 border-b border-slate-900 flex items-center justify-between px-6 bg-slate-950/50 backdrop-blur-md">
-          <div className="flex items-center gap-4 flex-1">
-            <button 
-              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              className="p-2 text-slate-400 hover:bg-slate-800 rounded-lg transition-colors md:hidden"
-            >
-              <Menu className="w-6 h-6" />
-            </button>
-            <input 
-              type="text" 
-              value={activeSong.title}
-              onChange={(e) => handleUpdate('title', e.target.value)}
-              className="bg-transparent text-xl font-bold focus:outline-none w-full border-b border-transparent focus:border-indigo-500/30 transition-all"
-              placeholder="Track Title..."
-            />
+      {/* Main Content */}
+      <main className="flex-1 flex flex-col min-w-0 relative bg-slate-950">
+        <header className="h-16 border-b border-slate-900 flex items-center justify-between px-4 md:px-6 bg-slate-950/50 backdrop-blur-xl sticky top-0 z-30">
+          <div className="flex items-center gap-3 flex-1 overflow-hidden">
+            <button onClick={() => setIsSidebarOpen(true)} className="md:hidden p-2 text-slate-400 hover:bg-slate-800 rounded-lg"><Menu className="w-6 h-6" /></button>
+            <input type="text" value={activeSong.title} onChange={(e) => handleUpdate('title', e.target.value)} className="bg-transparent text-lg md:text-xl font-bold focus:outline-none w-full border-b border-transparent focus:border-indigo-500/30 truncate" placeholder="Untitled..." />
           </div>
-          
-          <div className="flex items-center gap-6 ml-4">
-            <div className="hidden sm:flex items-center text-[10px] font-mono uppercase tracking-widest text-slate-500 gap-2">
-              {saveStatus === 'saving' ? (
-                <> <RefreshCw className="w-3 h-3 animate-spin text-indigo-500" /> Saving </>
-              ) : (
-                <> <Cloud className="w-3 h-3 text-emerald-500" /> Synced </>
-              )}
+          <div className="flex items-center gap-2 md:gap-5 ml-2">
+            <div className="hidden sm:block text-[10px] font-mono font-bold uppercase tracking-widest text-slate-500">
+              {saveStatus === 'saving' ? <RefreshCw className="w-3 h-3 animate-spin text-indigo-500 inline mr-1" /> : <Cloud className="w-3 h-3 text-emerald-500 inline mr-1" />}
+              {saveStatus === 'saving' ? 'Saving' : 'Synced'}
             </div>
-            <button 
-              onClick={() => setShowMemos(!showMemos)}
-              className={`p-2 rounded-lg transition-all ${showMemos ? 'text-indigo-400 bg-indigo-500/10 shadow-inner' : 'text-slate-500 hover:bg-slate-800'}`}
-            >
-              <Lightbulb className="w-6 h-6" />
-            </button>
+            <button onClick={copyToClipboard} className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-all" title="Copy"><Copy className="w-5 h-5" /></button>
+            <button onClick={() => setShowMemos(!showMemos)} className={`p-2 rounded-lg transition-all ${showMemos ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-400 hover:bg-slate-800'}`}><FileText className="w-6 h-6" /></button>
           </div>
         </header>
 
-        <div className="flex-1 flex overflow-hidden">
-          <div className="flex-1 flex flex-col min-w-0 bg-slate-950">
-            <textarea 
-              value={activeSong.content}
-              onChange={(e) => handleUpdate('content', e.target.value)}
-              className="flex-1 p-8 md:p-16 bg-transparent resize-none focus:outline-none text-xl md:text-3xl leading-relaxed text-slate-100 placeholder:text-slate-800"
-              placeholder="ここにリリックを綴る..."
-              spellCheck="false"
-            />
-          </div>
+        {/* Structure Tags Bar */}
+        <div className="flex items-center gap-2 px-4 py-2 border-b border-slate-900 bg-slate-950/30 overflow-x-auto no-scrollbar">
+          <Hash className="w-4 h-4 text-slate-600 shrink-0" />
+          {tags.map(t => (
+            <button key={t} onClick={() => insertTag(t)} className="px-3 py-1 rounded-full bg-slate-900 border border-slate-800 text-[11px] font-bold text-slate-400 hover:text-indigo-400 hover:border-indigo-500/50 transition-all whitespace-nowrap active:scale-90">{t}</button>
+          ))}
+        </div>
 
-          {showMemos && (
-            <div className="hidden lg:flex w-96 border-l border-slate-900 flex-col bg-slate-950">
-              <div className="p-4 flex items-center gap-2 text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] border-b border-slate-900 bg-slate-900/20">
-                <FileText className="w-3 h-3" /> Memo / Ideas
-              </div>
-              <textarea 
-                value={activeSong.memos}
-                onChange={(e) => handleUpdate('memos', e.target.value)}
-                className="flex-1 p-6 bg-transparent resize-none focus:outline-none text-sm text-slate-400 leading-relaxed placeholder:text-slate-800"
-                placeholder="韻のアイデア、構成案、フロウのメモ..."
-                spellCheck="false"
-              />
+        <div className="flex-1 flex overflow-hidden relative">
+          <textarea ref={textareaRef} value={activeSong.content} onChange={(e) => handleUpdate('content', e.target.value)} className="flex-1 p-6 md:p-12 bg-transparent resize-none focus:outline-none text-xl md:text-3xl leading-relaxed text-slate-200 placeholder:text-slate-800 custom-scrollbar" placeholder="ここにリリックを書き込む..." spellCheck="false" />
+          
+          {/* Memo Area (Responsive) */}
+          <div className={`fixed inset-y-0 right-0 w-80 md:relative md:w-80 md:translate-x-0 bg-slate-900 md:bg-slate-950/20 border-l border-slate-900 flex flex-col transition-transform duration-300 z-40 ${showMemos ? 'translate-x-0' : 'translate-x-full md:hidden'}`}>
+            <div className="p-4 text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] border-b border-slate-800 flex justify-between items-center">
+              <span className="flex items-center gap-2"><Lightbulb className="w-3 h-3 text-yellow-500" />Memo</span>
+              <button onClick={() => setShowMemos(false)} className="md:hidden p-1"><X className="w-4 h-4" /></button>
             </div>
-          )}
+            <textarea value={activeSong.memos} onChange={(e) => handleUpdate('memos', e.target.value)} className="flex-1 p-5 bg-transparent resize-none focus:outline-none text-sm text-slate-400 leading-relaxed placeholder:text-slate-800" placeholder="韻、構成案、アイデアなど..." spellCheck="false" />
+          </div>
         </div>
       </main>
 
       {notification && (
-        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-indigo-600 text-white px-8 py-3 rounded-full shadow-2xl text-sm font-bold z-50 flex items-center gap-2 animate-bounce">
-          <Check className="w-4 h-4" /> {notification}
+        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-indigo-600 text-white px-8 py-3 rounded-full shadow-2xl text-sm font-bold z-[100] flex items-center gap-2 animate-in slide-in-from-bottom-5 duration-300">
+          <Check className="w-4 h-4" />{notification}
         </div>
       )}
 
       <style dangerouslySetInnerHTML={{ __html: `
+        .no-scrollbar::-webkit-scrollbar { display: none; }
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 10px; }
         textarea::selection { background: #4f46e5; color: white; }
