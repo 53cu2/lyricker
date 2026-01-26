@@ -35,34 +35,41 @@ import {
 } from "firebase/firestore";
 
 /**
- * --- Vercel デプロイ用の設定 ---
- * 環境変数の参照エラーを回避するため、安全な取得メソッドを定義します。
+ * --- デプロイ環境向け設定の取得 ---
+ * VITE_ プレフィックスを削除した場合、多くの環境では process.env を参照します。
  */
-
 const getSafeEnv = (key) => {
   try {
-    // import.meta.env が存在しない環境でのエラーを回避
-    return import.meta.env[key];
+    // 1. Vite形式 (import.meta.env)
+    if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env[key]) {
+      return import.meta.env[key];
+    }
+    // 2. 標準的なNode/Vercel形式 (process.env)
+    if (typeof process !== 'undefined' && process.env && process.env[key]) {
+      return process.env[key];
+    }
   } catch (e) {
-    return undefined;
+    // 環境変数が参照できない場合は無視
   }
+  return undefined;
 };
 
 const getFirebaseConfig = () => {
-  // 1. Vite/Vercel 環境変数をチェック
-  const apiKey = getSafeEnv('FIREBASE_API_KEY');
+  // 環境変数から値をチェック（VITE_ を外した名前で取得を試みる）
+  const apiKey = getSafeEnv('FIREBASE_API_KEY') || getSafeEnv('VITE_FIREBASE_API_KEY');
+  
   if (apiKey) {
     return {
       apiKey: apiKey,
-      authDomain: getSafeEnv('FIREBASE_AUTH_DOMAIN'),
-      projectId: getSafeEnv('FIREBASE_PROJECT_ID'),
-      storageBucket: getSafeEnv('FIREBASE_STORAGE_BUCKET'),
-      messagingSenderId: getSafeEnv('FIREBASE_MESSAGING_SENDER_ID'),
-      appId: getSafeEnv('FIREBASE_APP_ID'),
+      authDomain: getSafeEnv('FIREBASE_AUTH_DOMAIN') || getSafeEnv('VITE_FIREBASE_AUTH_DOMAIN'),
+      projectId: getSafeEnv('FIREBASE_PROJECT_ID') || getSafeEnv('VITE_FIREBASE_PROJECT_ID'),
+      storageBucket: getSafeEnv('FIREBASE_STORAGE_BUCKET') || getSafeEnv('VITE_FIREBASE_STORAGE_BUCKET'),
+      messagingSenderId: getSafeEnv('FIREBASE_MESSAGING_SENDER_ID') || getSafeEnv('VITE_FIREBASE_MESSAGING_SENDER_ID'),
+      appId: getSafeEnv('FIREBASE_APP_ID') || getSafeEnv('VITE_FIREBASE_APP_ID'),
     };
   }
   
-  // 2. このエディタ(Canvas)内での実行用フォールバック
+  // Canvasプレビュー環境用のフォールバック
   try {
     if (typeof __firebase_config !== 'undefined') {
       return JSON.parse(__firebase_config);
@@ -80,7 +87,7 @@ const auth = app ? getAuth(app) : null;
 const db = app ? getFirestore(app) : null;
 
 // App IDの取得
-const APP_ID = getSafeEnv('APP_ID') || (typeof __app_id !== 'undefined' ? __app_id : 'lyric-note-production');
+const APP_ID = getSafeEnv('APP_ID') || getSafeEnv('VITE_APP_ID') || (typeof __app_id !== 'undefined' ? __app_id : 'lyric-note-production');
 
 const App = () => {
   const [user, setUser] = useState(null);
@@ -101,13 +108,13 @@ const App = () => {
       <div className="h-screen bg-slate-900 text-white flex items-center justify-center p-4 text-center">
         <div>
           <h1 className="text-2xl font-bold text-red-400 mb-2">Configuration Error</h1>
-          <p className="text-slate-400">Firebaseの設定が見つかりません。環境変数を確認してください。</p>
+          <p className="text-slate-400">Firebaseの設定が読み込めませんでした。VercelのEnvironment Variables設定を確認してください。</p>
         </div>
       </div>
     );
   }
 
-  // Auth
+  // Auth (匿名認証)
   useEffect(() => {
     const initAuth = async () => {
       try {
@@ -129,7 +136,7 @@ const App = () => {
     return () => unsubscribe();
   }, []);
 
-  // Data Fetch
+  // Data Fetch (Firestore同期)
   useEffect(() => {
     if (!user) return;
 
@@ -256,7 +263,6 @@ const App = () => {
 
   const copyToClipboard = () => {
     const text = `Title: ${activeSong.title}\nBPM: ${activeSong.bpm}\n\n${activeSong.content}`;
-    // Navigator APIのフォールバック
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(() => {
         showNotification("コピーしました");
@@ -308,13 +314,13 @@ const App = () => {
             </div>
           </div>
           <div className="flex items-center gap-4 shrink-0 ml-4">
-            <div className="text-xs font-medium">
+            <div className="text-xs font-medium text-slate-500">
               {saveStatus === 'saving' ? <span className="text-indigo-400 flex items-center gap-1"><RefreshCw className="w-3 h-3 animate-spin" /> Saving...</span> :
                saveStatus === 'saved' ? <span className="text-emerald-500 flex items-center gap-1 opacity-70"><Cloud className="w-3 h-3" /> Cloud Saved</span> : null}
             </div>
             <div className="hidden sm:flex items-center bg-slate-800 rounded-lg px-3 py-1.5 border border-slate-700"><span className="text-xs text-slate-400 mr-2 font-bold">BPM</span><input type="number" value={activeSong.bpm || ''} onChange={(e) => updateSong('bpm', e.target.value)} className="w-12 bg-transparent text-sm text-center focus:outline-none font-mono text-indigo-300" /></div>
-            <button onClick={copyToClipboard} className="p-2 text-slate-400 hover:text-indigo-400 hover:bg-slate-800 rounded-lg"><Copy className="w-5 h-5" /></button>
-            <button onClick={() => setShowMemos(!showMemos)} className={`p-2 rounded-lg hidden md:block ${showMemos ? 'text-indigo-400 bg-slate-800' : 'text-slate-400 hover:text-white'}`}><Lightbulb className="w-5 h-5" /></button>
+            <button onClick={copyToClipboard} title="Copy to clipboard" className="p-2 text-slate-400 hover:text-indigo-400 hover:bg-slate-800 rounded-lg"><Copy className="w-5 h-5" /></button>
+            <button onClick={() => setShowMemos(!showMemos)} title="Toggle memo" className={`p-2 rounded-lg hidden md:block ${showMemos ? 'text-indigo-400 bg-slate-800' : 'text-slate-400 hover:text-white'}`}><Lightbulb className="w-5 h-5" /></button>
           </div>
         </header>
 
@@ -331,7 +337,7 @@ const App = () => {
           {showMemos && (
             <div className="w-80 border-l border-slate-800 bg-slate-950/30 flex flex-col hidden md:flex">
               <div className="p-3 border-b border-slate-800 flex items-center gap-2 text-sm font-semibold text-slate-400 bg-slate-900/50"><Lightbulb className="w-4 h-4 text-yellow-500" /><span>Ideas / Memo</span></div>
-              <textarea value={activeSong.memos || ''} onChange={(e) => updateSong('memos', e.target.value)} placeholder="メモを入力..." className="flex-1 w-full p-4 bg-transparent resize-none focus:outline-none text-sm text-slate-400" />
+              <textarea value={activeSong.memos || ''} onChange={(e) => updateSong('memos', e.target.value)} placeholder="メモを入力..." className="flex-1 w-full p-4 bg-transparent resize-none focus:outline-none text-sm text-slate-400 leading-relaxed" />
             </div>
           )}
         </div>
