@@ -49,7 +49,7 @@ const getSafeEnv = (key) => {
 };
 
 const getFirebaseConfig = () => {
-  // 1. Vite/Vercel 環境変数 (VITE_*) をチェック
+  // 1. Vite/Vercel 環境変数をチェック
   const apiKey = getSafeEnv('FIREBASE_API_KEY');
   if (apiKey) {
     return {
