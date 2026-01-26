@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
-  Music, Plus, Trash2, Menu, Lightbulb, Cloud, Check, RefreshCw, FileText, Copy, X, Hash
+  Music, Plus, Trash2, Menu, Lightbulb, Cloud, Check, RefreshCw, FileText, Copy, X, Hash, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { 
@@ -35,14 +35,14 @@ const App = () => {
   });
   
   // UI State
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [showMemos, setShowMemos] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [showMemos, setShowMemos] = useState(true);
   const [notification, setNotification] = useState(null);
   
   const textareaRef = useRef(null);
   const saveTimeoutRef = useRef(null);
 
-  // --- Tailwind CDN Setup ---
+  // --- Tailwind Setup (1920x1080 Optimized) ---
   useEffect(() => {
     if (!document.getElementById('tailwind-cdn')) {
       const script = document.createElement('script');
@@ -56,8 +56,13 @@ const App = () => {
           theme: {
             extend: {
               colors: {
-                slate: { 950: '#020617' },
+                slate: { 900: '#0f172a', 950: '#020617' },
                 indigo: { 500: '#6366f1', 600: '#4f46e5' }
+              },
+              fontSize: {
+                '3xl': '1.875rem',
+                '4xl': '2.25rem',
+                '5xl': '3.5rem',
               }
             }
           }
@@ -67,7 +72,7 @@ const App = () => {
     }
   }, []);
 
-  // --- Auth & Sync ---
+  // --- Firebase Sync ---
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (!currentUser) {
@@ -92,6 +97,9 @@ const App = () => {
       setSongs(loaded);
       setIsLoading(false);
       if (loaded.length > 0 && !currentSongId) setCurrentSongId(loaded[0].id);
+    }, (error) => {
+      console.error("Firestore error:", error);
+      setIsLoading(false);
     });
     return () => unsubscribe();
   }, [user]);
@@ -128,7 +136,8 @@ const App = () => {
     handleUpdate('content', newContent);
     setTimeout(() => {
       el.focus();
-      el.setSelectionRange(start + tagText.length, start + tagText.length);
+      const newPos = start + tagText.length;
+      el.setSelectionRange(newPos, newPos);
     }, 10);
   };
 
@@ -139,10 +148,9 @@ const App = () => {
         title: 'New Track', content: '', memos: '', bpm: 120, updatedAt: serverTimestamp()
       });
       setCurrentSongId(docRef.id);
-      setIsSidebarOpen(false);
-      setNotification("作成しました");
+      setNotification("新規トラックを作成しました");
       setTimeout(() => setNotification(null), 2000);
-    } catch (e) {}
+    } catch (e) { console.error(e); }
   };
 
   const copyToClipboard = () => {
@@ -153,88 +161,178 @@ const App = () => {
     el.select();
     document.execCommand('copy');
     document.body.removeChild(el);
-    setNotification("コピーしました");
+    setNotification("クリップボードにコピーしました");
     setTimeout(() => setNotification(null), 2000);
   };
 
-  if (isLoading) return <div className="h-screen bg-slate-950 flex items-center justify-center"><RefreshCw className="w-8 h-8 text-indigo-500 animate-spin" /></div>;
+  if (isLoading) return (
+    <div className="h-screen bg-slate-950 flex items-center justify-center">
+      <div className="flex flex-col items-center gap-4">
+        <RefreshCw className="w-10 h-10 text-indigo-500 animate-spin" />
+        <span className="text-slate-500 font-mono tracking-widest text-xs uppercase">Loading Environment</span>
+      </div>
+    </div>
+  );
 
-  const tags = ['Intro', 'Verse', 'Hook', 'Chorus', 'Bridge', 'Outro'];
+  const tags = ['Intro', 'Verse', 'Hook', 'Chorus', 'Bridge', 'Outro', 'Pre-Chorus'];
 
   return (
-    <div className="flex h-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
-      {/* Sidebar Overlay (Mobile) */}
-      {isSidebarOpen && <div onClick={() => setIsSidebarOpen(false)} className="fixed inset-0 bg-black/60 z-40 md:hidden animate-in fade-in duration-200" />}
-
-      {/* Sidebar */}
-      <aside className={`fixed md:relative z-50 h-full bg-slate-900 border-r border-slate-800 transition-all duration-300 shadow-2xl ${isSidebarOpen ? 'w-72' : 'w-0 -translate-x-full md:translate-x-0 md:w-64'}`}>
-        <div className="flex flex-col h-full w-72 md:w-64">
-          <div className="p-5 border-b border-slate-800 flex items-center justify-between">
-            <div className="flex items-center gap-2 font-black text-lg tracking-tighter text-indigo-400"><Music className="w-5 h-5" />LYRIC NOTE</div>
-            <button onClick={() => setIsSidebarOpen(false)} className="md:hidden p-1 hover:bg-slate-800 rounded-full"><X className="w-5 h-5" /></button>
+    <div className="flex h-screen bg-slate-950 text-slate-100 overflow-hidden font-sans selection:bg-indigo-500/30">
+      
+      {/* Sidebar - Wide Screen Optimized */}
+      <aside className={`relative h-full bg-slate-900 border-r border-slate-800/50 transition-all duration-500 ease-in-out shadow-2xl flex-shrink-0 ${isSidebarOpen ? 'w-80' : 'w-0 -translate-x-full'}`}>
+        <div className="flex flex-col h-full w-80">
+          <div className="p-8 border-b border-slate-800/50 flex items-center justify-between">
+            <div className="flex items-center gap-3 font-black text-2xl tracking-tighter text-white">
+              <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-600/20">
+                <Music className="w-6 h-6 text-white" />
+              </div>
+              LYRIC NOTE
+            </div>
           </div>
-          <div className="p-4"><button onClick={addNewTrack} className="w-full bg-indigo-600 hover:bg-indigo-500 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg shadow-indigo-600/20"><Plus className="w-5 h-5" />New Track</button></div>
-          <div className="flex-1 overflow-y-auto px-2 space-y-1 pb-10">
+          <div className="p-6">
+            <button onClick={addNewTrack} className="w-full bg-indigo-600 hover:bg-indigo-500 py-4 rounded-2xl font-bold flex items-center justify-center gap-3 transition-all active:scale-95 shadow-xl shadow-indigo-600/10 text-white">
+              <Plus className="w-5 h-5" /> New Track
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto px-4 space-y-2 pb-10 custom-scrollbar">
             {songs.map(s => (
-              <div key={s.id} onClick={() => { setCurrentSongId(s.id); setIsSidebarOpen(false); }} className={`group p-3 rounded-xl cursor-pointer flex items-center justify-between transition-all ${currentSongId === s.id ? 'bg-slate-800 text-white shadow-inner' : 'text-slate-500 hover:bg-slate-800/40'}`}>
-                <span className="truncate font-medium text-sm">{s.title || 'Untitled'}</span>
-                <button onClick={(e) => { e.stopPropagation(); if(confirm('削除しますか？')) deleteDoc(doc(db, 'artifacts', APP_ID, 'users', user.uid, 'songs', s.id)); }} className="opacity-0 group-hover:opacity-100 p-1 hover:text-red-400 transition-all"><Trash2 className="w-4 h-4" /></button>
+              <div 
+                key={s.id} 
+                onClick={() => setCurrentSongId(s.id)} 
+                className={`group p-4 rounded-2xl cursor-pointer flex items-center justify-between transition-all duration-300 ${currentSongId === s.id ? 'bg-slate-800 text-white shadow-xl ring-1 ring-slate-700' : 'text-slate-500 hover:bg-slate-800/40 hover:text-slate-300'}`}
+              >
+                <div className="flex flex-col min-w-0">
+                  <span className="truncate font-semibold text-base">{s.title || 'Untitled'}</span>
+                  <span className="text-[10px] opacity-40 font-mono mt-1 uppercase">Track ID: {s.id.slice(0,8)}</span>
+                </div>
+                <button 
+                  onClick={(e) => { e.stopPropagation(); if(confirm('削除しますか？')) deleteDoc(doc(db, 'artifacts', APP_ID, 'users', user.uid, 'songs', s.id)); }} 
+                  className="opacity-0 group-hover:opacity-100 p-2 hover:bg-red-500/10 hover:text-red-400 rounded-lg transition-all"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
               </div>
             ))}
           </div>
         </div>
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col min-w-0 relative bg-slate-950">
-        <header className="h-16 border-b border-slate-900 flex items-center justify-between px-4 md:px-6 bg-slate-950/50 backdrop-blur-xl sticky top-0 z-30">
-          <div className="flex items-center gap-3 flex-1 overflow-hidden">
-            <button onClick={() => setIsSidebarOpen(true)} className="md:hidden p-2 text-slate-400 hover:bg-slate-800 rounded-lg"><Menu className="w-6 h-6" /></button>
-            <input type="text" value={activeSong.title} onChange={(e) => handleUpdate('title', e.target.value)} className="bg-transparent text-lg md:text-xl font-bold focus:outline-none w-full border-b border-transparent focus:border-indigo-500/30 truncate" placeholder="Untitled..." />
-          </div>
-          <div className="flex items-center gap-2 md:gap-5 ml-2">
-            <div className="hidden sm:block text-[10px] font-mono font-bold uppercase tracking-widest text-slate-500">
-              {saveStatus === 'saving' ? <RefreshCw className="w-3 h-3 animate-spin text-indigo-500 inline mr-1" /> : <Cloud className="w-3 h-3 text-emerald-500 inline mr-1" />}
-              {saveStatus === 'saving' ? 'Saving' : 'Synced'}
+      {/* Main Content Area */}
+      <main className="flex-1 flex flex-col min-w-0 relative bg-[#020617]">
+        <header className="h-24 border-b border-slate-900/50 flex items-center justify-between px-10 bg-[#020617]/80 backdrop-blur-2xl sticky top-0 z-30">
+          <div className="flex items-center gap-6 flex-1 overflow-hidden">
+            <button 
+              onClick={() => setIsSidebarOpen(!isSidebarOpen)} 
+              className="p-3 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-all"
+            >
+              {isSidebarOpen ? <ChevronLeft className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            </button>
+            <div className="flex flex-col flex-1 max-w-3xl">
+              <input 
+                type="text" 
+                value={activeSong.title} 
+                onChange={(e) => handleUpdate('title', e.target.value)} 
+                className="bg-transparent text-3xl font-black focus:outline-none w-full border-b border-transparent focus:border-indigo-500/30 truncate placeholder:text-slate-800 text-white" 
+                placeholder="Track Title..." 
+              />
             </div>
-            <button onClick={copyToClipboard} className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-all" title="Copy"><Copy className="w-5 h-5" /></button>
-            <button onClick={() => setShowMemos(!showMemos)} className={`p-2 rounded-lg transition-all ${showMemos ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-400 hover:bg-slate-800'}`}><FileText className="w-6 h-6" /></button>
+          </div>
+          
+          <div className="flex items-center gap-8 ml-6">
+            <div className="flex flex-col items-end">
+              <div className="text-[10px] font-black uppercase tracking-[0.3em] mb-1">
+                {saveStatus === 'saving' ? (
+                  <span className="text-indigo-400 flex items-center gap-2 animate-pulse"><RefreshCw className="w-3 h-3 animate-spin" /> Auto Saving</span>
+                ) : (
+                  <span className="text-emerald-500 flex items-center gap-2"><Cloud className="w-3 h-3" /> Cloud Synced</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2 text-slate-500 text-[10px] font-mono">
+                BPM: <input type="number" value={activeSong.bpm} onChange={(e) => handleUpdate('bpm', e.target.value)} className="bg-transparent w-8 text-indigo-400 focus:outline-none focus:text-indigo-300 font-bold" />
+              </div>
+            </div>
+            
+            <div className="h-10 w-px bg-slate-800 mx-2" />
+
+            <div className="flex items-center gap-3">
+              <button onClick={copyToClipboard} className="p-3 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-all border border-transparent hover:border-slate-700" title="Export Track">
+                <Copy className="w-6 h-6" />
+              </button>
+              <button 
+                onClick={() => setShowMemos(!showMemos)} 
+                className={`p-3 rounded-xl transition-all border ${showMemos ? 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20 shadow-inner' : 'text-slate-400 hover:bg-slate-800 border-transparent hover:border-slate-700'}`}
+              >
+                <FileText className="w-6 h-6" />
+              </button>
+            </div>
           </div>
         </header>
 
-        {/* Structure Tags Bar */}
-        <div className="flex items-center gap-2 px-4 py-2 border-b border-slate-900 bg-slate-950/30 overflow-x-auto no-scrollbar">
-          <Hash className="w-4 h-4 text-slate-600 shrink-0" />
+        {/* Dynamic Toolbar */}
+        <div className="flex items-center gap-3 px-10 py-4 border-b border-slate-900/50 bg-slate-950/20 overflow-x-auto no-scrollbar">
+          <Hash className="w-5 h-5 text-slate-700 shrink-0" />
           {tags.map(t => (
-            <button key={t} onClick={() => insertTag(t)} className="px-3 py-1 rounded-full bg-slate-900 border border-slate-800 text-[11px] font-bold text-slate-400 hover:text-indigo-400 hover:border-indigo-500/50 transition-all whitespace-nowrap active:scale-90">{t}</button>
+            <button 
+              key={t} 
+              onClick={() => insertTag(t)} 
+              className="px-5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs font-bold text-slate-400 hover:text-indigo-400 hover:border-indigo-500/40 hover:bg-indigo-500/5 transition-all whitespace-nowrap active:scale-95 uppercase tracking-widest"
+            >
+              {t}
+            </button>
           ))}
         </div>
 
         <div className="flex-1 flex overflow-hidden relative">
-          <textarea ref={textareaRef} value={activeSong.content} onChange={(e) => handleUpdate('content', e.target.value)} className="flex-1 p-6 md:p-12 bg-transparent resize-none focus:outline-none text-xl md:text-3xl leading-relaxed text-slate-200 placeholder:text-slate-800 custom-scrollbar" placeholder="ここにリリックを書き込む..." spellCheck="false" />
+          <div className="flex-1 flex flex-col min-w-0 bg-[#020617] relative">
+            <textarea 
+              ref={textareaRef} 
+              value={activeSong.content} 
+              onChange={(e) => handleUpdate('content', e.target.value)} 
+              className="flex-1 p-16 md:p-24 bg-transparent resize-none focus:outline-none text-3xl md:text-4xl lg:text-5xl leading-[1.5] text-slate-100 placeholder:text-slate-900 custom-scrollbar font-medium" 
+              placeholder="ここにリリックを解き放つ..." 
+              spellCheck="false" 
+            />
+          </div>
           
-          {/* Memo Area (Responsive) */}
-          <div className={`fixed inset-y-0 right-0 w-80 md:relative md:w-80 md:translate-x-0 bg-slate-900 md:bg-slate-950/20 border-l border-slate-900 flex flex-col transition-transform duration-300 z-40 ${showMemos ? 'translate-x-0' : 'translate-x-full md:hidden'}`}>
-            <div className="p-4 text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] border-b border-slate-800 flex justify-between items-center">
-              <span className="flex items-center gap-2"><Lightbulb className="w-3 h-3 text-yellow-500" />Memo</span>
-              <button onClick={() => setShowMemos(false)} className="md:hidden p-1"><X className="w-4 h-4" /></button>
+          {/* Idea/Memo Pane */}
+          <div className={`relative h-full bg-slate-950/40 border-l border-slate-900/50 flex flex-col transition-all duration-500 ease-in-out ${showMemos ? 'w-[400px]' : 'w-0 overflow-hidden translate-x-full'}`}>
+            <div className="flex flex-col h-full w-[400px]">
+              <div className="p-6 border-b border-slate-900/50 flex items-center justify-between bg-slate-900/20">
+                <span className="flex items-center gap-3 text-xs font-black text-slate-400 uppercase tracking-[0.3em]">
+                  <Lightbulb className="w-4 h-4 text-yellow-500" />Rhyme / Idea Memo
+                </span>
+                <button onClick={() => setShowMemos(false)} className="p-2 hover:bg-slate-800 rounded-lg text-slate-600 hover:text-slate-300">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <textarea 
+                value={activeSong.memos} 
+                onChange={(e) => handleUpdate('memos', e.target.value)} 
+                className="flex-1 p-8 bg-transparent resize-none focus:outline-none text-lg text-slate-400 leading-loose placeholder:text-slate-900 font-medium" 
+                placeholder="韻の候補、構成のフロー、刹那的なアイデア..." 
+                spellCheck="false" 
+              />
             </div>
-            <textarea value={activeSong.memos} onChange={(e) => handleUpdate('memos', e.target.value)} className="flex-1 p-5 bg-transparent resize-none focus:outline-none text-sm text-slate-400 leading-relaxed placeholder:text-slate-800" placeholder="韻、構成案、アイデアなど..." spellCheck="false" />
           </div>
         </div>
       </main>
 
       {notification && (
-        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-indigo-600 text-white px-8 py-3 rounded-full shadow-2xl text-sm font-bold z-[100] flex items-center gap-2 animate-in slide-in-from-bottom-5 duration-300">
-          <Check className="w-4 h-4" />{notification}
+        <div className="fixed bottom-12 right-12 bg-indigo-600 text-white px-10 py-4 rounded-2xl shadow-[0_20px_50px_rgba(79,70,229,0.3)] text-sm font-black z-[100] flex items-center gap-3 animate-in slide-in-from-right-10 fade-in duration-300">
+          <Check className="w-5 h-5" />{notification}
         </div>
       )}
 
+      {/* Global Aesthetics */}
       <style dangerouslySetInnerHTML={{ __html: `
         .no-scrollbar::-webkit-scrollbar { display: none; }
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 10px; }
-        textarea::selection { background: #4f46e5; color: white; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #334155; }
+        textarea::placeholder { transition: all 0.5s ease; }
+        textarea:focus::placeholder { opacity: 0.3; transform: translateX(10px); }
       `}} />
     </div>
   );
