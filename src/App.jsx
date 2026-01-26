@@ -50,15 +50,15 @@ const getSafeEnv = (key) => {
 
 const getFirebaseConfig = () => {
   // 1. Vite/Vercel 環境変数 (VITE_*) をチェック
-  const apiKey = getSafeEnv('VITE_FIREBASE_API_KEY');
+  const apiKey = getSafeEnv('FIREBASE_API_KEY');
   if (apiKey) {
     return {
       apiKey: apiKey,
-      authDomain: getSafeEnv('VITE_FIREBASE_AUTH_DOMAIN'),
-      projectId: getSafeEnv('VITE_FIREBASE_PROJECT_ID'),
-      storageBucket: getSafeEnv('VITE_FIREBASE_STORAGE_BUCKET'),
-      messagingSenderId: getSafeEnv('VITE_FIREBASE_MESSAGING_SENDER_ID'),
-      appId: getSafeEnv('VITE_FIREBASE_APP_ID'),
+      authDomain: getSafeEnv('FIREBASE_AUTH_DOMAIN'),
+      projectId: getSafeEnv('FIREBASE_PROJECT_ID'),
+      storageBucket: getSafeEnv('FIREBASE_STORAGE_BUCKET'),
+      messagingSenderId: getSafeEnv('FIREBASE_MESSAGING_SENDER_ID'),
+      appId: getSafeEnv('FIREBASE_APP_ID'),
     };
   }
   
@@ -80,7 +80,7 @@ const auth = app ? getAuth(app) : null;
 const db = app ? getFirestore(app) : null;
 
 // App IDの取得
-const APP_ID = getSafeEnv('VITE_APP_ID') || (typeof __app_id !== 'undefined' ? __app_id : 'lyric-note-production');
+const APP_ID = getSafeEnv('APP_ID') || (typeof __app_id !== 'undefined' ? __app_id : 'lyric-note-production');
 
 const App = () => {
   const [user, setUser] = useState(null);
