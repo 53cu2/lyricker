@@ -2,6 +2,25 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Music, Share2, Plus, Menu, X, ChevronRight, Copy, Check, MessageCircle, Send, Edit2, Save } from 'lucide-react';
 
 const LyricNote = () => {
+  // Add body style reset
+  useEffect(() => {
+    document.body.style.margin = '0';
+    document.body.style.padding = '0';
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.margin = '0';
+    document.documentElement.style.padding = '0';
+    document.documentElement.style.height = '100%';
+    document.body.style.height = '100%';
+    
+    return () => {
+      document.body.style.overflow = '';
+      document.body.style.margin = '';
+      document.body.style.padding = '';
+      document.body.style.height = '';
+      document.documentElement.style.height = '';
+    };
+  }, []);
+
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [songs, setSongs] = useState([]);
   const [currentSong, setCurrentSong] = useState(null);
@@ -172,11 +191,19 @@ const LyricNote = () => {
 
   const containerStyle = {
     display: 'flex',
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: '100vw',
     height: '100vh',
     backgroundColor: '#020617',
     color: '#f1f5f9',
     overflow: 'hidden',
-    fontFamily: 'system-ui, -apple-system, sans-serif'
+    fontFamily: 'system-ui, -apple-system, sans-serif',
+    margin: 0,
+    padding: 0
   };
 
   const sidebarStyle = {
