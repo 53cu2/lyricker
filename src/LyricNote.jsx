@@ -10,6 +10,7 @@ import {
   orderBy
 } from "firebase/firestore";
 import { db, auth } from "./firebase";
+import "./LyricNote.css";
 
 /* =========================
    Utils
