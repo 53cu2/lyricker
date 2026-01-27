@@ -48,22 +48,31 @@ const LyricNote = () => {
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [userName, setUserName] = useState('');
+  const [isEditingName, setIsEditingName] = useState(false);
   const [showFirebaseGuide, setShowFirebaseGuide] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState('connecting');
+  const [rightPanelTab, setRightPanelTab] = useState('ideas'); // 'ideas', 'chat', 'settings'
   
   const typingTimerRef = useRef(null);
   const saveTimerRef = useRef(null);
   const contentRef = useRef(null);
   const chatEndRef = useRef(null);
   const titleInputRef = useRef(null);
+  const nameInputRef = useRef(null);
   const unsubscribeSongRef = useRef(null);
   const unsubscribeChatRef = useRef(null);
 
   // Initialize user name
   useEffect(() => {
-    const names = ['Artist', 'Producer', 'Writer', 'MC', 'Singer'];
-    const generatedName = names[Math.floor(Math.random() * names.length)] + Math.floor(Math.random() * 100);
-    setUserName(generatedName);
+    const savedName = localStorage.getItem('lyricNoteUserName');
+    if (savedName) {
+      setUserName(savedName);
+    } else {
+      const names = ['Artist', 'Producer', 'Writer', 'MC', 'Singer'];
+      const generatedName = names[Math.floor(Math.random() * names.length)] + Math.floor(Math.random() * 100);
+      setUserName(generatedName);
+      localStorage.setItem('lyricNoteUserName', generatedName);
+    }
   }, []);
 
   // Load songs list from Firebase
@@ -110,12 +119,15 @@ const LyricNote = () => {
     const songRef = doc(db, 'songs', currentSong.id);
     
     unsubscribeSongRef.current = onSnapshot(songRef, (snapshot) => {
+      // CRITICAL: Only update if NOT currently typing
       if (snapshot.exists() && !isTyping) {
         const data = snapshot.data();
-        setTitle(data.title || '');
-        setContent(data.content || '');
-        setMemos(data.memos || '');
-        setBpm(data.bpm || 120);
+        
+        // Only update fields that haven't been modified locally
+        setTitle(prev => isTyping ? prev : (data.title || ''));
+        setContent(prev => isTyping ? prev : (data.content || ''));
+        setMemos(prev => isTyping ? prev : (data.memos || ''));
+        setBpm(prev => isTyping ? prev : (data.bpm || 120));
       }
     }, (error) => {
       console.error('Error syncing song:', error);
@@ -126,7 +138,7 @@ const LyricNote = () => {
         unsubscribeSongRef.current();
       }
     };
-  }, [currentSong?.id, isTyping]);
+  }, [currentSong?.id]);
 
   // Real-time chat sync
   useEffect(() => {
@@ -157,6 +169,14 @@ const LyricNote = () => {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
+
+  // Focus name input when editing
+  useEffect(() => {
+    if (isEditingName) {
+      nameInputRef.current?.focus();
+      nameInputRef.current?.select();
+    }
+  }, [isEditingName]);
 
   // Focus title input when editing
   useEffect(() => {
@@ -210,7 +230,23 @@ const LyricNote = () => {
   };
 
   const handleContentChange = (e) => {
-    setContent(e.target.value);
+    const newContent = e.target.value;
+    setContent(newContent);
+    setIsTyping(true);
+    
+    if (typingTimerRef.current) {
+      clearTimeout(typingTimerRef.current);
+    }
+    
+    // Extend typing state for 2 seconds after last keystroke
+    typingTimerRef.current = setTimeout(() => {
+      setIsTyping(false);
+    }, 2000);
+  };
+
+  const handleMemosChange = (e) => {
+    const newMemos = e.target.value;
+    setMemos(newMemos);
     setIsTyping(true);
     
     if (typingTimerRef.current) {
@@ -219,7 +255,7 @@ const LyricNote = () => {
     
     typingTimerRef.current = setTimeout(() => {
       setIsTyping(false);
-    }, 1000);
+    }, 2000);
   };
 
   const createNewSession = async () => {
@@ -293,6 +329,21 @@ const LyricNote = () => {
     } else if (e.key === 'Escape') {
       setTitle(currentSong?.title || '');
       setIsEditingTitle(false);
+    }
+  };
+
+  const handleNameSave = () => {
+    setIsEditingName(false);
+    localStorage.setItem('lyricNoteUserName', userName);
+  };
+
+  const handleNameKeyPress = (e) => {
+    if (e.key === 'Enter') {
+      handleNameSave();
+    } else if (e.key === 'Escape') {
+      const savedName = localStorage.getItem('lyricNoteUserName');
+      setUserName(savedName || userName);
+      setIsEditingName(false);
     }
   };
 
@@ -532,7 +583,7 @@ const LyricNote = () => {
             
             <button onClick={() => setChatOpen(!chatOpen)} style={{ ...buttonSecondary, position: 'relative' }}>
               <MessageCircle size={20} />
-              {chatMessages.length > 0 && (
+              {chatMessages.length > 0 && rightPanelTab !== 'chat' && (
                 <span style={{
                   position: 'absolute',
                   top: '-4px',
@@ -596,29 +647,237 @@ const LyricNote = () => {
           </div>
 
           {/* Ideas Panel */}
-          <div style={{ width: '384px', backgroundColor: '#0f172a', borderLeft: '1px solid #1e293b', padding: '1.5rem', overflowY: 'auto' }}>
-            <h3 style={{ fontSize: '0.875rem', textTransform: 'uppercase', color: '#94a3b8', fontWeight: '600', marginBottom: '1rem' }}>
-              Ideas & Rhymes
-            </h3>
-            <textarea
-              value={memos}
-              onChange={(e) => setMemos(e.target.value)}
-              style={{
-                width: '100%',
-                height: '100%',
-                backgroundColor: '#1e293b',
-                borderRadius: '0.5rem',
-                padding: '1rem',
-                outline: 'none',
-                resize: 'none',
-                fontSize: '0.875rem',
-                lineHeight: '1.6',
-                border: 'none',
-                color: '#f1f5f9'
-              }}
-              placeholder="Keep your rhyme ideas, flows, and notes here..."
-              spellCheck={false}
-            />
+          <div style={{ width: '384px', backgroundColor: '#0f172a', borderLeft: '1px solid #1e293b', display: 'flex', flexDirection: 'column' }}>
+            {/* Tab Header */}
+            <div style={{ display: 'flex', borderBottom: '1px solid #1e293b' }}>
+              <button
+                onClick={() => setRightPanelTab('ideas')}
+                style={{
+                  flex: 1,
+                  padding: '1rem',
+                  backgroundColor: rightPanelTab === 'ideas' ? '#1e293b' : 'transparent',
+                  border: 'none',
+                  color: rightPanelTab === 'ideas' ? '#f1f5f9' : '#94a3b8',
+                  fontWeight: rightPanelTab === 'ideas' ? '600' : '400',
+                  cursor: 'pointer',
+                  fontSize: '0.875rem',
+                  borderBottom: rightPanelTab === 'ideas' ? '2px solid #4f46e5' : 'none'
+                }}
+              >
+                Ideas
+              </button>
+              <button
+                onClick={() => setRightPanelTab('chat')}
+                style={{
+                  flex: 1,
+                  padding: '1rem',
+                  backgroundColor: rightPanelTab === 'chat' ? '#1e293b' : 'transparent',
+                  border: 'none',
+                  color: rightPanelTab === 'chat' ? '#f1f5f9' : '#94a3b8',
+                  fontWeight: rightPanelTab === 'chat' ? '600' : '400',
+                  cursor: 'pointer',
+                  fontSize: '0.875rem',
+                  borderBottom: rightPanelTab === 'chat' ? '2px solid #4f46e5' : 'none',
+                  position: 'relative'
+                }}
+              >
+                Chat
+                {chatMessages.length > 0 && rightPanelTab !== 'chat' && (
+                  <span style={{
+                    position: 'absolute',
+                    top: '8px',
+                    right: '8px',
+                    backgroundColor: '#4f46e5',
+                    fontSize: '0.625rem',
+                    minWidth: '18px',
+                    height: '18px',
+                    borderRadius: '9999px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '0 4px'
+                  }}>
+                    {chatMessages.length}
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() => setRightPanelTab('settings')}
+                style={{
+                  flex: 1,
+                  padding: '1rem',
+                  backgroundColor: rightPanelTab === 'settings' ? '#1e293b' : 'transparent',
+                  border: 'none',
+                  color: rightPanelTab === 'settings' ? '#f1f5f9' : '#94a3b8',
+                  fontWeight: rightPanelTab === 'settings' ? '600' : '400',
+                  cursor: 'pointer',
+                  fontSize: '0.875rem',
+                  borderBottom: rightPanelTab === 'settings' ? '2px solid #4f46e5' : 'none'
+                }}
+              >
+                Settings
+              </button>
+            </div>
+
+            {/* Tab Content */}
+            <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+              {/* Ideas Tab */}
+              {rightPanelTab === 'ideas' && (
+                <div style={{ flex: 1, padding: '1.5rem', display: 'flex', flexDirection: 'column' }}>
+                  <h3 style={{ fontSize: '0.875rem', textTransform: 'uppercase', color: '#94a3b8', fontWeight: '600', marginBottom: '1rem' }}>
+                    Ideas & Rhymes
+                  </h3>
+                  <textarea
+                    value={memos}
+                    onChange={handleMemosChange}
+                    style={{
+                      flex: 1,
+                      width: '100%',
+                      backgroundColor: '#1e293b',
+                      borderRadius: '0.5rem',
+                      padding: '1rem',
+                      outline: 'none',
+                      resize: 'none',
+                      fontSize: '0.875rem',
+                      lineHeight: '1.6',
+                      border: 'none',
+                      color: '#f1f5f9'
+                    }}
+                    placeholder="Keep your rhyme ideas, flows, and notes here..."
+                    spellCheck={false}
+                  />
+                </div>
+              )}
+
+              {/* Chat Tab */}
+              {rightPanelTab === 'chat' && (
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                  <div style={{ flex: 1, overflowY: 'auto', padding: '1rem' }}>
+                    {chatMessages.map(msg => (
+                      <div key={msg.id} style={{ marginBottom: '0.75rem', textAlign: msg.user === 'System' ? 'center' : 'left' }}>
+                        <div style={msg.user === 'System' ? 
+                          { backgroundColor: '#1e293b', color: '#94a3b8', fontSize: '0.75rem', padding: '0.5rem 0.75rem', borderRadius: '9999px', display: 'inline-block' } :
+                          { backgroundColor: '#1e293b', borderRadius: '0.5rem', padding: '0.75rem' }
+                        }>
+                          {msg.user !== 'System' && (
+                            <div style={{ fontSize: '0.75rem', color: '#818cf8', fontWeight: '600', marginBottom: '0.25rem' }}>
+                              {msg.user}
+                            </div>
+                          )}
+                          <div style={{ fontSize: msg.user === 'System' ? '0.75rem' : '0.875rem' }}>
+                            {msg.message}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    <div ref={chatEndRef} />
+                  </div>
+                  
+                  <div style={{ padding: '1rem', borderTop: '1px solid #1e293b' }}>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <input
+                        type="text"
+                        value={chatInput}
+                        onChange={(e) => setChatInput(e.target.value)}
+                        onKeyPress={handleChatKeyPress}
+                        placeholder="Type a message..."
+                        style={inputStyle}
+                      />
+                      <button onClick={sendMessage} style={buttonPrimary}>
+                        <Send size={20} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Settings Tab */}
+              {rightPanelTab === 'settings' && (
+                <div style={{ flex: 1, padding: '1.5rem', overflowY: 'auto' }}>
+                  <h3 style={{ fontSize: '0.875rem', textTransform: 'uppercase', color: '#94a3b8', fontWeight: '600', marginBottom: '1.5rem' }}>
+                    Settings
+                  </h3>
+
+                  {/* User Name */}
+                  <div style={{ marginBottom: '2rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', marginBottom: '0.5rem', fontWeight: '600' }}>
+                      YOUR NAME
+                    </label>
+                    {isEditingName ? (
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <input
+                          ref={nameInputRef}
+                          type="text"
+                          value={userName}
+                          onChange={(e) => setUserName(e.target.value)}
+                          onKeyDown={handleNameKeyPress}
+                          onBlur={handleNameSave}
+                          style={inputStyle}
+                          placeholder="Enter your name"
+                        />
+                        <button onClick={handleNameSave} style={{ ...buttonSecondary, padding: '0.75rem' }}>
+                          <Save size={18} />
+                        </button>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1rem', backgroundColor: '#1e293b', borderRadius: '0.5rem' }}>
+                        <span style={{ flex: 1, color: '#f1f5f9' }}>{userName}</span>
+                        <button onClick={() => setIsEditingName(true)} style={{ ...buttonSecondary, padding: '0.5rem' }}>
+                          <Edit2 size={16} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Connection Status */}
+                  <div style={{ marginBottom: '2rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', marginBottom: '0.5rem', fontWeight: '600' }}>
+                      CONNECTION STATUS
+                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1rem', backgroundColor: '#1e293b', borderRadius: '0.5rem' }}>
+                      <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: getStatusColor() }}></div>
+                      <span style={{ color: getStatusColor(), fontSize: '0.875rem', fontWeight: '600' }}>{getStatusText()}</span>
+                    </div>
+                  </div>
+
+                  {/* Firebase Setup */}
+                  <div style={{ marginBottom: '2rem' }}>
+                    <button
+                      onClick={() => setShowFirebaseGuide(true)}
+                      style={{
+                        width: '100%',
+                        padding: '0.75rem 1rem',
+                        backgroundColor: '#1e293b',
+                        border: 'none',
+                        borderRadius: '0.5rem',
+                        color: '#cbd5e1',
+                        cursor: 'pointer',
+                        fontSize: '0.875rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '0.5rem'
+                      }}
+                    >
+                      🔥 Firebase Setup Guide
+                    </button>
+                  </div>
+
+                  {/* Current Session Info */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', marginBottom: '0.5rem', fontWeight: '600' }}>
+                      CURRENT SESSION
+                    </label>
+                    <div style={{ padding: '0.75rem 1rem', backgroundColor: '#1e293b', borderRadius: '0.5rem' }}>
+                      <div style={{ fontSize: '0.875rem', color: '#f1f5f9', marginBottom: '0.5rem' }}>{title}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                        ID: {currentSong?.id?.substring(0, 12)}...
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -627,7 +886,6 @@ const LyricNote = () => {
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
             <span>{content.split('\n').length} lines</span>
             <span>{content.split(/\s+/).filter(w => w).length} words</span>
-            <span style={{ color: '#818cf8' }}>as {userName}</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: getStatusColor() }}></div>
@@ -636,54 +894,7 @@ const LyricNote = () => {
         </div>
       </div>
 
-      {/* Chat Panel */}
-      {chatOpen && (
-        <div style={{ width: '384px', backgroundColor: '#0f172a', borderLeft: '1px solid #1e293b', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ padding: '1rem', borderBottom: '1px solid #1e293b', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <h3 style={{ fontWeight: '600' }}>Team Chat</h3>
-            <button onClick={() => setChatOpen(false)} style={buttonSecondary}>
-              <X size={20} />
-            </button>
-          </div>
-          
-          <div style={{ flex: 1, overflowY: 'auto', padding: '1rem' }}>
-            {chatMessages.map(msg => (
-              <div key={msg.id} style={{ marginBottom: '0.75rem', textAlign: msg.user === 'System' ? 'center' : 'left' }}>
-                <div style={msg.user === 'System' ? 
-                  { backgroundColor: '#1e293b', color: '#94a3b8', fontSize: '0.75rem', padding: '0.5rem 0.75rem', borderRadius: '9999px', display: 'inline-block' } :
-                  { backgroundColor: '#1e293b', borderRadius: '0.5rem', padding: '0.75rem' }
-                }>
-                  {msg.user !== 'System' && (
-                    <div style={{ fontSize: '0.75rem', color: '#818cf8', fontWeight: '600', marginBottom: '0.25rem' }}>
-                      {msg.user}
-                    </div>
-                  )}
-                  <div style={{ fontSize: msg.user === 'System' ? '0.75rem' : '0.875rem' }}>
-                    {msg.message}
-                  </div>
-                </div>
-              </div>
-            ))}
-            <div ref={chatEndRef} />
-          </div>
-          
-          <div style={{ padding: '1rem', borderTop: '1px solid #1e293b' }}>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <input
-                type="text"
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyPress={handleChatKeyPress}
-                placeholder="Type a message..."
-                style={inputStyle}
-              />
-              <button onClick={sendMessage} style={buttonPrimary}>
-                <Send size={20} />
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Chat Panel - REMOVED, now in right panel tabs */}
 
       {/* Sidebar Toggle */}
       {!sidebarOpen && (
