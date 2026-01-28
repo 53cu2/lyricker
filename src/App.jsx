@@ -61,7 +61,7 @@ const LyricNote = () => {
   const [connectionStatus, setConnectionStatus] = useState('connecting');
   const [rightPanelTab, setRightPanelTab] = useState('ideas'); // 'ideas', 'chat', 'settings'
   const [isMobile, setIsMobile] = useState(false);
-  const [mobileSidebarTab, setMobileSidebarTab] = useState('sessions'); // 'sessions', 'writing'
+  const [mobileSidebarTab, setMobileSidebarTab] = useState('sessions'); // 'sessions', 'writing', 'lyrics'
   
   const typingTimerRef = useRef(null);
   const saveTimerRef = useRef(null);
@@ -567,33 +567,68 @@ const LyricNote = () => {
               onClick={() => setMobileSidebarTab('sessions')}
               style={{
                 flex: 1,
-                padding: '1rem',
+                padding: '0.75rem',
                 backgroundColor: mobileSidebarTab === 'sessions' ? '#1e293b' : 'transparent',
                 border: 'none',
                 color: mobileSidebarTab === 'sessions' ? '#f1f5f9' : '#94a3b8',
                 fontWeight: mobileSidebarTab === 'sessions' ? '600' : '400',
                 cursor: 'pointer',
-                fontSize: '0.875rem',
+                fontSize: '0.75rem',
                 borderBottom: mobileSidebarTab === 'sessions' ? '2px solid #4f46e5' : 'none'
               }}
             >
               Sessions
             </button>
             <button
+              onClick={() => setMobileSidebarTab('lyrics')}
+              style={{
+                flex: 1,
+                padding: '0.75rem',
+                backgroundColor: mobileSidebarTab === 'lyrics' ? '#1e293b' : 'transparent',
+                border: 'none',
+                color: mobileSidebarTab === 'lyrics' ? '#f1f5f9' : '#94a3b8',
+                fontWeight: mobileSidebarTab === 'lyrics' ? '600' : '400',
+                cursor: 'pointer',
+                fontSize: '0.75rem',
+                borderBottom: mobileSidebarTab === 'lyrics' ? '2px solid #4f46e5' : 'none'
+              }}
+            >
+              Lyrics
+            </button>
+            <button
               onClick={() => setMobileSidebarTab('writing')}
               style={{
                 flex: 1,
-                padding: '1rem',
+                padding: '0.75rem',
                 backgroundColor: mobileSidebarTab === 'writing' ? '#1e293b' : 'transparent',
                 border: 'none',
                 color: mobileSidebarTab === 'writing' ? '#f1f5f9' : '#94a3b8',
                 fontWeight: mobileSidebarTab === 'writing' ? '600' : '400',
                 cursor: 'pointer',
-                fontSize: '0.875rem',
-                borderBottom: mobileSidebarTab === 'writing' ? '2px solid #4f46e5' : 'none'
+                fontSize: '0.75rem',
+                borderBottom: mobileSidebarTab === 'writing' ? '2px solid #4f46e5' : 'none',
+                position: 'relative'
               }}
             >
-              Writing
+              More
+              {chatMessages.length > 0 && mobileSidebarTab !== 'writing' && (
+                <span style={{
+                  position: 'absolute',
+                  top: '6px',
+                  right: '6px',
+                  backgroundColor: '#4f46e5',
+                  fontSize: '0.625rem',
+                  minWidth: '14px',
+                  height: '14px',
+                  borderRadius: '9999px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '0 3px'
+                }}>
+                  {chatMessages.length}
+                </span>
+              )}
             </button>
           </div>
         )}
@@ -652,6 +687,59 @@ const LyricNote = () => {
               ))}
             </div>
           </>
+        )}
+
+        {/* Lyrics Tab Content (mobile only) */}
+        {isMobile && mobileSidebarTab === 'lyrics' && (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div style={{ flex: 1, padding: '0.75rem', overflowY: 'auto' }}>
+              <textarea
+                value={content}
+                onChange={handleContentChange}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  backgroundColor: 'transparent',
+                  fontSize: '1rem',
+                  fontWeight: '500',
+                  lineHeight: '1.6',
+                  outline: 'none',
+                  resize: 'none',
+                  border: 'none',
+                  color: '#f1f5f9'
+                }}
+                placeholder="Start writing your lyrics..."
+                spellCheck={false}
+              />
+            </div>
+            
+            {/* Structure Tags for Mobile */}
+            <div style={{ borderTop: '1px solid #1e293b', padding: '0.75rem', overflowX: 'auto' }}>
+              <div style={{ display: 'flex', gap: '0.5rem', paddingBottom: '0.5rem' }}>
+                {tags.map(tag => (
+                  <button
+                    key={tag}
+                    onClick={() => {
+                      insertTag(tag);
+                    }}
+                    style={{
+                      padding: '0.4rem 0.75rem',
+                      backgroundColor: '#1e293b',
+                      borderRadius: '0.5rem',
+                      fontSize: '0.75rem',
+                      fontWeight: '600',
+                      whiteSpace: 'nowrap',
+                      border: 'none',
+                      cursor: 'pointer',
+                      color: '#cbd5e1'
+                    }}
+                  >
+                    {tag}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Writing Tab Content (mobile only) */}
