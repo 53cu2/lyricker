@@ -478,29 +478,32 @@ const LyricNote = () => {
   const headerStyle = {
     backgroundColor: '#0f172a',
     borderBottom: '1px solid #1e293b',
-    padding: '1rem 1.5rem',
+    padding: isMobile ? '0.75rem 1rem' : '1rem 1.5rem',
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'space-between'
+    justifyContent: 'space-between',
+    flexWrap: isMobile ? 'wrap' : 'nowrap',
+    gap: isMobile ? '0.5rem' : '1rem'
   };
 
   const buttonPrimary = {
     backgroundColor: '#4f46e5',
     color: 'white',
-    padding: '0.75rem 1rem',
+    padding: isMobile ? '0.5rem 0.75rem' : '0.75rem 1rem',
     borderRadius: '0.5rem',
     border: 'none',
     cursor: 'pointer',
     fontWeight: '600',
     display: 'flex',
     alignItems: 'center',
-    gap: '0.5rem'
+    gap: '0.5rem',
+    fontSize: isMobile ? '0.875rem' : '1rem'
   };
 
   const buttonSecondary = {
     backgroundColor: '#1e293b',
     color: '#cbd5e1',
-    padding: '0.5rem',
+    padding: isMobile ? '0.4rem' : '0.5rem',
     borderRadius: '0.5rem',
     border: 'none',
     cursor: 'pointer'
@@ -509,19 +512,20 @@ const LyricNote = () => {
   const inputStyle = {
     backgroundColor: '#1e293b',
     color: '#f1f5f9',
-    padding: '0.75rem 1rem',
+    padding: isMobile ? '0.5rem 0.75rem' : '0.75rem 1rem',
     borderRadius: '0.5rem',
     border: 'none',
     outline: 'none',
-    width: '100%'
+    width: '100%',
+    fontSize: isMobile ? '0.875rem' : '1rem'
   };
 
   const textareaStyle = {
     width: '100%',
     height: '100%',
     backgroundColor: 'transparent',
-    fontSize: isMobile ? '1.25rem' : '1.75rem',
-    fontWeight: 'bold',
+    fontSize: isMobile ? '1rem' : '1.5rem',
+    fontWeight: isMobile ? '500' : 'bold',
     lineHeight: '1.6',
     outline: 'none',
     resize: 'none',
@@ -548,57 +552,343 @@ const LyricNote = () => {
       <div style={sidebarStyle}>
         <div style={{ padding: '1.5rem', borderBottom: '1px solid #1e293b', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <Music style={{ color: '#818cf8' }} size={28} />
-            <h1 style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>Lyricker</h1>
+            <Music style={{ color: '#818cf8' }} size={isMobile ? 24 : 28} />
+            <h1 style={{ fontSize: isMobile ? '1.125rem' : '1.25rem', fontWeight: 'bold' }}>Lyricker</h1>
           </div>
           <button onClick={() => setSidebarOpen(false)} style={buttonSecondary}>
-            <X size={20} />
+            <X size={isMobile ? 18 : 20} />
           </button>
         </div>
         
-        <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          <button onClick={createNewSession} style={buttonPrimary}>
-            <Plus size={20} />
-            New Session
-          </button>
-          
-          <button
-            onClick={() => setShowFirebaseGuide(true)}
-            style={{ ...buttonSecondary, width: '100%', padding: '0.5rem 1rem', fontSize: '0.875rem' }}
-          >
-            🔥 Firebase Setup
-          </button>
-        </div>
-
-        <div style={{ flex: 1, overflowY: 'auto', padding: '1rem' }}>
-          <h2 style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: '#94a3b8', fontWeight: '600', marginBottom: '0.75rem', paddingLeft: '0.5rem' }}>
-            Sessions
-          </h2>
-          {songs.map(song => (
+        {/* Mobile: Tab Navigation */}
+        {isMobile && (
+          <div style={{ display: 'flex', borderBottom: '1px solid #1e293b' }}>
             <button
-              key={song.id}
-              onClick={() => selectSong(song)}
+              onClick={() => setMobileSidebarTab('sessions')}
               style={{
-                width: '100%',
-                textAlign: 'left',
+                flex: 1,
                 padding: '1rem',
-                borderRadius: '0.5rem',
-                marginBottom: '0.5rem',
-                backgroundColor: currentSong?.id === song.id ? '#4f46e5' : '#1e293b',
-                color: currentSong?.id === song.id ? 'white' : '#cbd5e1',
+                backgroundColor: mobileSidebarTab === 'sessions' ? '#1e293b' : 'transparent',
                 border: 'none',
-                cursor: 'pointer'
+                color: mobileSidebarTab === 'sessions' ? '#f1f5f9' : '#94a3b8',
+                fontWeight: mobileSidebarTab === 'sessions' ? '600' : '400',
+                cursor: 'pointer',
+                fontSize: '0.875rem',
+                borderBottom: mobileSidebarTab === 'sessions' ? '2px solid #4f46e5' : 'none'
               }}
             >
-              <div style={{ fontWeight: '600', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {song.title}
-              </div>
-              <div style={{ fontSize: '0.75rem', opacity: 0.7, marginTop: '0.25rem' }}>
-                {new Date(song.updatedAt).toLocaleDateString()}
-              </div>
+              Sessions
             </button>
-          ))}
-        </div>
+            <button
+              onClick={() => setMobileSidebarTab('writing')}
+              style={{
+                flex: 1,
+                padding: '1rem',
+                backgroundColor: mobileSidebarTab === 'writing' ? '#1e293b' : 'transparent',
+                border: 'none',
+                color: mobileSidebarTab === 'writing' ? '#f1f5f9' : '#94a3b8',
+                fontWeight: mobileSidebarTab === 'writing' ? '600' : '400',
+                cursor: 'pointer',
+                fontSize: '0.875rem',
+                borderBottom: mobileSidebarTab === 'writing' ? '2px solid #4f46e5' : 'none'
+              }}
+            >
+              Writing
+            </button>
+          </div>
+        )}
+        
+        {/* Sessions Tab Content (default for desktop, tab for mobile) */}
+        {(!isMobile || mobileSidebarTab === 'sessions') && (
+          <>
+            <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <button onClick={createNewSession} style={buttonPrimary}>
+                <Plus size={isMobile ? 18 : 20} />
+                New Session
+              </button>
+              
+              {!isMobile && (
+                <button
+                  onClick={() => setShowFirebaseGuide(true)}
+                  style={{ ...buttonSecondary, width: '100%', padding: '0.5rem 1rem', fontSize: '0.875rem' }}
+                >
+                  🔥 Firebase Setup
+                </button>
+              )}
+            </div>
+
+            <div style={{ flex: 1, overflowY: 'auto', padding: '1rem' }}>
+              <h2 style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: '#94a3b8', fontWeight: '600', marginBottom: '0.75rem', paddingLeft: '0.5rem' }}>
+                Sessions
+              </h2>
+              {songs.map(song => (
+                <button
+                  key={song.id}
+                  onClick={() => {
+                    selectSong(song);
+                    if (isMobile) {
+                      setSidebarOpen(false);
+                    }
+                  }}
+                  style={{
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '1rem',
+                    borderRadius: '0.5rem',
+                    marginBottom: '0.5rem',
+                    backgroundColor: currentSong?.id === song.id ? '#4f46e5' : '#1e293b',
+                    color: currentSong?.id === song.id ? 'white' : '#cbd5e1',
+                    border: 'none',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <div style={{ fontWeight: '600', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {song.title}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', opacity: 0.7, marginTop: '0.25rem' }}>
+                    {new Date(song.updatedAt).toLocaleDateString()}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* Writing Tab Content (mobile only) */}
+        {isMobile && mobileSidebarTab === 'writing' && (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            {/* Sub-tabs for Writing section */}
+            <div style={{ display: 'flex', borderBottom: '1px solid #1e293b' }}>
+              <button
+                onClick={() => setRightPanelTab('ideas')}
+                style={{
+                  flex: 1,
+                  padding: '0.75rem',
+                  backgroundColor: rightPanelTab === 'ideas' ? '#1e293b' : 'transparent',
+                  border: 'none',
+                  color: rightPanelTab === 'ideas' ? '#f1f5f9' : '#94a3b8',
+                  fontWeight: rightPanelTab === 'ideas' ? '600' : '400',
+                  cursor: 'pointer',
+                  fontSize: '0.75rem',
+                  borderBottom: rightPanelTab === 'ideas' ? '2px solid #4f46e5' : 'none'
+                }}
+              >
+                Ideas
+              </button>
+              <button
+                onClick={() => setRightPanelTab('chat')}
+                style={{
+                  flex: 1,
+                  padding: '0.75rem',
+                  backgroundColor: rightPanelTab === 'chat' ? '#1e293b' : 'transparent',
+                  border: 'none',
+                  color: rightPanelTab === 'chat' ? '#f1f5f9' : '#94a3b8',
+                  fontWeight: rightPanelTab === 'chat' ? '600' : '400',
+                  cursor: 'pointer',
+                  fontSize: '0.75rem',
+                  borderBottom: rightPanelTab === 'chat' ? '2px solid #4f46e5' : 'none',
+                  position: 'relative'
+                }}
+              >
+                Chat
+                {chatMessages.length > 0 && rightPanelTab !== 'chat' && (
+                  <span style={{
+                    position: 'absolute',
+                    top: '6px',
+                    right: '6px',
+                    backgroundColor: '#4f46e5',
+                    fontSize: '0.625rem',
+                    minWidth: '16px',
+                    height: '16px',
+                    borderRadius: '9999px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '0 4px'
+                  }}>
+                    {chatMessages.length}
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() => setRightPanelTab('settings')}
+                style={{
+                  flex: 1,
+                  padding: '0.75rem',
+                  backgroundColor: rightPanelTab === 'settings' ? '#1e293b' : 'transparent',
+                  border: 'none',
+                  color: rightPanelTab === 'settings' ? '#f1f5f9' : '#94a3b8',
+                  fontWeight: rightPanelTab === 'settings' ? '600' : '400',
+                  cursor: 'pointer',
+                  fontSize: '0.75rem',
+                  borderBottom: rightPanelTab === 'settings' ? '2px solid #4f46e5' : 'none'
+                }}
+              >
+                Settings
+              </button>
+            </div>
+
+            {/* Tab Content */}
+            <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+              {/* Ideas Tab */}
+              {rightPanelTab === 'ideas' && (
+                <div style={{ flex: 1, padding: '1rem', display: 'flex', flexDirection: 'column' }}>
+                  <h3 style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: '#94a3b8', fontWeight: '600', marginBottom: '0.75rem' }}>
+                    Ideas & Rhymes
+                  </h3>
+                  <textarea
+                    value={memos}
+                    onChange={handleMemosChange}
+                    style={{
+                      flex: 1,
+                      width: '100%',
+                      backgroundColor: '#1e293b',
+                      borderRadius: '0.5rem',
+                      padding: '1rem',
+                      outline: 'none',
+                      resize: 'none',
+                      fontSize: '0.875rem',
+                      lineHeight: '1.6',
+                      border: 'none',
+                      color: '#f1f5f9'
+                    }}
+                    placeholder="Keep your rhyme ideas, flows, and notes here..."
+                    spellCheck={false}
+                  />
+                </div>
+              )}
+
+              {/* Chat Tab */}
+              {rightPanelTab === 'chat' && (
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                  <div style={{ flex: 1, overflowY: 'auto', padding: '1rem' }}>
+                    {chatMessages.map(msg => (
+                      <div key={msg.id} style={{ marginBottom: '0.75rem', textAlign: msg.user === 'System' ? 'center' : 'left' }}>
+                        <div style={msg.user === 'System' ? 
+                          { backgroundColor: '#1e293b', color: '#94a3b8', fontSize: '0.75rem', padding: '0.5rem 0.75rem', borderRadius: '9999px', display: 'inline-block' } :
+                          { backgroundColor: '#1e293b', borderRadius: '0.5rem', padding: '0.75rem' }
+                        }>
+                          {msg.user !== 'System' && (
+                            <div style={{ fontSize: '0.75rem', color: '#818cf8', fontWeight: '600', marginBottom: '0.25rem' }}>
+                              {msg.user}
+                            </div>
+                          )}
+                          <div style={{ fontSize: msg.user === 'System' ? '0.75rem' : '0.875rem' }}>
+                            {msg.message}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    <div ref={chatEndRef} />
+                  </div>
+                  
+                  <div style={{ padding: '1rem', borderTop: '1px solid #1e293b' }}>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <input
+                        type="text"
+                        value={chatInput}
+                        onChange={(e) => setChatInput(e.target.value)}
+                        onKeyPress={handleChatKeyPress}
+                        placeholder="Type a message..."
+                        style={inputStyle}
+                      />
+                      <button onClick={sendMessage} style={buttonPrimary}>
+                        <Send size={20} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Settings Tab */}
+              {rightPanelTab === 'settings' && (
+                <div style={{ flex: 1, padding: '1rem', overflowY: 'auto' }}>
+                  <h3 style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: '#94a3b8', fontWeight: '600', marginBottom: '1rem' }}>
+                    Settings
+                  </h3>
+
+                  {/* User Name */}
+                  <div style={{ marginBottom: '1.5rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', marginBottom: '0.5rem', fontWeight: '600' }}>
+                      YOUR NAME
+                    </label>
+                    {isEditingName ? (
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <input
+                          ref={nameInputRef}
+                          type="text"
+                          value={userName}
+                          onChange={(e) => setUserName(e.target.value)}
+                          onKeyDown={handleNameKeyPress}
+                          onBlur={handleNameSave}
+                          style={inputStyle}
+                          placeholder="Enter your name"
+                        />
+                        <button onClick={handleNameSave} style={{ ...buttonSecondary, padding: '0.75rem' }}>
+                          <Save size={18} />
+                        </button>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1rem', backgroundColor: '#1e293b', borderRadius: '0.5rem' }}>
+                        <span style={{ flex: 1, color: '#f1f5f9' }}>{userName}</span>
+                        <button onClick={() => setIsEditingName(true)} style={{ ...buttonSecondary, padding: '0.5rem' }}>
+                          <Edit2 size={16} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Connection Status */}
+                  <div style={{ marginBottom: '1.5rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', marginBottom: '0.5rem', fontWeight: '600' }}>
+                      CONNECTION STATUS
+                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1rem', backgroundColor: '#1e293b', borderRadius: '0.5rem' }}>
+                      <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: getStatusColor() }}></div>
+                      <span style={{ color: getStatusColor(), fontSize: '0.875rem', fontWeight: '600' }}>{getStatusText()}</span>
+                    </div>
+                  </div>
+
+                  {/* Firebase Setup */}
+                  <div style={{ marginBottom: '1.5rem' }}>
+                    <button
+                      onClick={() => setShowFirebaseGuide(true)}
+                      style={{
+                        width: '100%',
+                        padding: '0.75rem 1rem',
+                        backgroundColor: '#1e293b',
+                        border: 'none',
+                        borderRadius: '0.5rem',
+                        color: '#cbd5e1',
+                        cursor: 'pointer',
+                        fontSize: '0.875rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '0.5rem'
+                      }}
+                    >
+                      🔥 Firebase Setup Guide
+                    </button>
+                  </div>
+
+                  {/* Current Session Info */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', marginBottom: '0.5rem', fontWeight: '600' }}>
+                      CURRENT SESSION
+                    </label>
+                    <div style={{ padding: '0.75rem 1rem', backgroundColor: '#1e293b', borderRadius: '0.5rem' }}>
+                      <div style={{ fontSize: '0.875rem', color: '#f1f5f9', marginBottom: '0.5rem' }}>{title}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                        ID: {currentSong?.id?.substring(0, 12)}...
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Main Content */}
@@ -613,7 +903,7 @@ const LyricNote = () => {
             )}
             
             {isEditingTitle ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: isMobile ? '100%' : 'auto' }}>
                 <input
                   ref={titleInputRef}
                   type="text"
@@ -621,74 +911,76 @@ const LyricNote = () => {
                   onChange={(e) => setTitle(e.target.value)}
                   onKeyDown={handleTitleKeyPress}
                   onBlur={handleTitleSave}
-                  style={{ ...inputStyle, fontSize: '1.5rem', fontWeight: 'bold', width: '400px' }}
+                  style={{ ...inputStyle, fontSize: isMobile ? '1rem' : '1.5rem', fontWeight: 'bold', width: isMobile ? '100%' : '400px' }}
                   placeholder="Untitled"
                 />
                 <button onClick={handleTitleSave} style={buttonPrimary}>
-                  <Save size={18} />
+                  <Save size={isMobile ? 16 : 18} />
                 </button>
               </div>
             ) : (
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{title}</h2>
+                <h2 style={{ fontSize: isMobile ? '1.125rem' : '1.5rem', fontWeight: 'bold' }}>{title}</h2>
                 <button onClick={() => setIsEditingTitle(true)} style={buttonSecondary}>
-                  <Edit2 size={18} />
+                  <Edit2 size={isMobile ? 16 : 18} />
                 </button>
               </div>
             )}
           </div>
           
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: '#1e293b', borderRadius: '0.5rem', padding: '0.5rem 1rem' }}>
-              <Music size={16} style={{ color: '#818cf8' }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: '#1e293b', borderRadius: '0.5rem', padding: isMobile ? '0.4rem 0.75rem' : '0.5rem 1rem' }}>
+              <Music size={isMobile ? 14 : 16} style={{ color: '#818cf8' }} />
               <input
                 type="number"
                 value={bpm}
                 onChange={(e) => setBpm(parseInt(e.target.value) || 120)}
-                style={{ backgroundColor: 'transparent', width: '64px', textAlign: 'center', outline: 'none', border: 'none', color: '#f1f5f9' }}
+                style={{ backgroundColor: 'transparent', width: isMobile ? '48px' : '64px', textAlign: 'center', outline: 'none', border: 'none', color: '#f1f5f9', fontSize: isMobile ? '0.875rem' : '1rem' }}
               />
-              <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>BPM</span>
+              <span style={{ fontSize: isMobile ? '0.625rem' : '0.75rem', color: '#94a3b8' }}>BPM</span>
             </div>
             
-            <button onClick={() => setChatOpen(!chatOpen)} style={{ ...buttonSecondary, position: 'relative' }}>
-              <MessageCircle size={20} />
-              {chatMessages.length > 0 && rightPanelTab !== 'chat' && (
-                <span style={{
-                  position: 'absolute',
-                  top: '-4px',
-                  right: '-4px',
-                  backgroundColor: '#4f46e5',
-                  fontSize: '0.75rem',
-                  width: '20px',
-                  height: '20px',
-                  borderRadius: '50%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
-                  {chatMessages.length}
-                </span>
-              )}
-            </button>
+            {!isMobile && (
+              <button onClick={() => setChatOpen(!chatOpen)} style={{ ...buttonSecondary, position: 'relative' }}>
+                <MessageCircle size={20} />
+                {chatMessages.length > 0 && rightPanelTab !== 'chat' && (
+                  <span style={{
+                    position: 'absolute',
+                    top: '-4px',
+                    right: '-4px',
+                    backgroundColor: '#4f46e5',
+                    fontSize: '0.75rem',
+                    width: '20px',
+                    height: '20px',
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    {chatMessages.length}
+                  </span>
+                )}
+              </button>
+            )}
             
             <button onClick={handleShare} style={buttonPrimary}>
-              {copied ? <Check size={18} /> : <Share2 size={18} />}
-              {copied ? 'Copied!' : 'Share'}
+              {copied ? <Check size={isMobile ? 16 : 18} /> : <Share2 size={isMobile ? 16 : 18} />}
+              {!isMobile && (copied ? 'Copied!' : 'Share')}
             </button>
           </div>
         </div>
 
         {/* Structure Tags */}
-        <div style={{ backgroundColor: '#0f172a', borderBottom: '1px solid #1e293b', padding: '0.75rem 1.5rem', display: 'flex', gap: '0.5rem', overflowX: 'auto' }}>
+        <div style={{ backgroundColor: '#0f172a', borderBottom: '1px solid #1e293b', padding: isMobile ? '0.5rem 1rem' : '0.75rem 1.5rem', display: 'flex', gap: '0.5rem', overflowX: 'auto' }}>
           {tags.map(tag => (
             <button
               key={tag}
               onClick={() => insertTag(tag)}
               style={{
-                padding: '0.5rem 1rem',
+                padding: isMobile ? '0.4rem 0.75rem' : '0.5rem 1rem',
                 backgroundColor: '#1e293b',
                 borderRadius: '0.5rem',
-                fontSize: '0.875rem',
+                fontSize: isMobile ? '0.75rem' : '0.875rem',
                 fontWeight: '600',
                 whiteSpace: 'nowrap',
                 border: 'none',
@@ -704,7 +996,7 @@ const LyricNote = () => {
         {/* Editor Area */}
         <div style={{ flex: 1, display: 'flex', overflow: 'hidden', flexDirection: isMobile ? 'column' : 'row' }}>
           {/* Main Editor */}
-          <div style={{ flex: 1, padding: isMobile ? '1rem' : '2rem', overflowY: 'auto' }}>
+          <div style={{ flex: 1, padding: isMobile ? '0.75rem' : '2rem', overflowY: 'auto' }}>
             <textarea
               ref={contentRef}
               value={content}
@@ -953,13 +1245,13 @@ const LyricNote = () => {
         </div>
 
         {/* Status Bar */}
-        <div style={{ backgroundColor: '#0f172a', borderTop: '1px solid #1e293b', padding: '0.5rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.75rem', color: '#94a3b8' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        <div style={{ backgroundColor: '#0f172a', borderTop: '1px solid #1e293b', padding: isMobile ? '0.4rem 1rem' : '0.5rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: isMobile ? '0.625rem' : '0.75rem', color: '#94a3b8' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '0.5rem' : '1rem' }}>
             <span>{content.split('\n').length} lines</span>
             <span>{content.split(/\s+/).filter(w => w).length} words</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: getStatusColor() }}></div>
+            <div style={{ width: isMobile ? '6px' : '8px', height: isMobile ? '6px' : '8px', borderRadius: '50%', backgroundColor: getStatusColor() }}></div>
             <span style={{ color: getStatusColor() }}>{getStatusText()}</span>
           </div>
         </div>
