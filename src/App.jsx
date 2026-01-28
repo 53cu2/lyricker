@@ -61,6 +61,7 @@ const LyricNote = () => {
   const [connectionStatus, setConnectionStatus] = useState('connecting');
   const [rightPanelTab, setRightPanelTab] = useState('ideas'); // 'ideas', 'chat', 'settings'
   const [isMobile, setIsMobile] = useState(false);
+  const [mobileSidebarTab, setMobileSidebarTab] = useState('sessions'); // 'sessions', 'writing'
   
   const typingTimerRef = useRef(null);
   const saveTimerRef = useRef(null);
