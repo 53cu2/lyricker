@@ -55,23 +55,27 @@ const LyricNote = () => {
   
   const typingTimerRef = useRef(null);
   const saveTimerRef = useRef(null);
+  const autoSaveIntervalRef = useRef(null);
   const contentRef = useRef(null);
   const chatEndRef = useRef(null);
   const titleInputRef = useRef(null);
   const nameInputRef = useRef(null);
   const unsubscribeSongRef = useRef(null);
   const unsubscribeChatRef = useRef(null);
+  const lastSavedContentRef = useRef('');
+  const lastSavedMemosRef = useRef('');
+  const lastSavedTitleRef = useRef('');
 
   // Initialize user name
   useEffect(() => {
-    const savedName = localStorage.getItem('lyricNoteUserName');
+    const savedName = localStorage.getItem('lyrickerUserName');
     if (savedName) {
       setUserName(savedName);
     } else {
       const names = ['Artist', 'Producer', 'Writer', 'MC', 'Singer'];
       const generatedName = names[Math.floor(Math.random() * names.length)] + Math.floor(Math.random() * 100);
       setUserName(generatedName);
-      localStorage.setItem('lyricNoteUserName', generatedName);
+      localStorage.setItem('lyrickerUserName', generatedName);
     }
   }, []);
 
@@ -123,11 +127,25 @@ const LyricNote = () => {
       if (snapshot.exists() && !isTyping) {
         const data = snapshot.data();
         
-        // Only update fields that haven't been modified locally
-        setTitle(prev => isTyping ? prev : (data.title || ''));
-        setContent(prev => isTyping ? prev : (data.content || ''));
-        setMemos(prev => isTyping ? prev : (data.memos || ''));
-        setBpm(prev => isTyping ? prev : (data.bpm || 120));
+        // Only update if data is different from what we have locally
+        const newTitle = data.title || '';
+        const newContent = data.content || '';
+        const newMemos = data.memos || '';
+        const newBpm = data.bpm || 120;
+        
+        // Update only if remote data is different and we're not typing
+        if (newTitle !== title && newTitle !== lastSavedTitleRef.current) {
+          setTitle(newTitle);
+        }
+        if (newContent !== content && newContent !== lastSavedContentRef.current) {
+          setContent(newContent);
+        }
+        if (newMemos !== memos && newMemos !== lastSavedMemosRef.current) {
+          setMemos(newMemos);
+        }
+        if (newBpm !== bpm) {
+          setBpm(newBpm);
+        }
       }
     }, (error) => {
       console.error('Error syncing song:', error);
@@ -205,6 +223,32 @@ const LyricNote = () => {
     };
   }, [title, content, memos, bpm]);
 
+  // 10-second auto-save interval
+  useEffect(() => {
+    if (!currentSong?.id) return;
+    
+    // Clear existing interval
+    if (autoSaveIntervalRef.current) {
+      clearInterval(autoSaveIntervalRef.current);
+    }
+    
+    // Set up new interval
+    autoSaveIntervalRef.current = setInterval(() => {
+      // Force save every 10 seconds if there are changes
+      if (title !== lastSavedTitleRef.current || 
+          content !== lastSavedContentRef.current || 
+          memos !== lastSavedMemosRef.current) {
+        saveSongToFirebase();
+      }
+    }, 10000); // 10 seconds
+    
+    return () => {
+      if (autoSaveIntervalRef.current) {
+        clearInterval(autoSaveIntervalRef.current);
+      }
+    };
+  }, [currentSong?.id, title, content, memos]);
+
   const saveSongToFirebase = async () => {
     if (!currentSong?.id) return;
     
@@ -218,12 +262,19 @@ const LyricNote = () => {
         updatedAt: serverTimestamp()
       }, { merge: true });
       
+      // Update last saved refs
+      lastSavedTitleRef.current = title;
+      lastSavedContentRef.current = content;
+      lastSavedMemosRef.current = memos;
+      
       // Update local songs list
       setSongs(prev => prev.map(s => 
         s.id === currentSong.id 
           ? { ...s, title, content, memos, bpm, updatedAt: new Date() }
           : s
       ));
+      
+      console.log('Saved to Firebase at', new Date().toLocaleTimeString());
     } catch (error) {
       console.error('Error saving song:', error);
     }
@@ -238,10 +289,10 @@ const LyricNote = () => {
       clearTimeout(typingTimerRef.current);
     }
     
-    // Extend typing state for 2 seconds after last keystroke
+    // Extend typing state for 3 seconds after last keystroke
     typingTimerRef.current = setTimeout(() => {
       setIsTyping(false);
-    }, 2000);
+    }, 3000);
   };
 
   const handleMemosChange = (e) => {
@@ -255,7 +306,7 @@ const LyricNote = () => {
     
     typingTimerRef.current = setTimeout(() => {
       setIsTyping(false);
-    }, 2000);
+    }, 3000);
   };
 
   const createNewSession = async () => {
@@ -304,6 +355,11 @@ const LyricNote = () => {
     setContent(song.content || '');
     setMemos(song.memos || '');
     setBpm(song.bpm || 120);
+    
+    // Update last saved refs
+    lastSavedTitleRef.current = song.title;
+    lastSavedContentRef.current = song.content || '';
+    lastSavedMemosRef.current = song.memos || '';
   };
 
   const insertTag = (tag) => {
@@ -334,14 +390,14 @@ const LyricNote = () => {
 
   const handleNameSave = () => {
     setIsEditingName(false);
-    localStorage.setItem('lyricNoteUserName', userName);
+    localStorage.setItem('lyrickerUserName', userName);
   };
 
   const handleNameKeyPress = (e) => {
     if (e.key === 'Enter') {
       handleNameSave();
     } else if (e.key === 'Escape') {
-      const savedName = localStorage.getItem('lyricNoteUserName');
+      const savedName = localStorage.getItem('lyrickerUserName');
       setUserName(savedName || userName);
       setIsEditingName(false);
     }
@@ -480,7 +536,7 @@ const LyricNote = () => {
         <div style={{ padding: '1.5rem', borderBottom: '1px solid #1e293b', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <Music style={{ color: '#818cf8' }} size={28} />
-            <h1 style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>Lyric Note</h1>
+            <h1 style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>Lyricker</h1>
           </div>
           <button onClick={() => setSidebarOpen(false)} style={buttonSecondary}>
             <X size={20} />
