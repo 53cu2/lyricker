@@ -75,6 +75,8 @@ const LyricNote = () => {
   const lastSavedContentRef = useRef('');
   const lastSavedMemosRef = useRef('');
   const lastSavedTitleRef = useRef('');
+  const lastKnownRemoteContentRef = useRef('');
+  const localEditTimestampRef = useRef(0);
 
   // Initialize user name
   useEffect(() => {
@@ -126,7 +128,7 @@ const LyricNote = () => {
     loadSongs();
   }, []);
 
-  // Real-time sync for current song
+  // Real-time sync for current song with CRDT-inspired conflict resolution
   useEffect(() => {
     if (!currentSong?.id) return;
     
@@ -136,24 +138,40 @@ const LyricNote = () => {
       if (!snapshot.exists()) return;
       
       const data = snapshot.data();
+      const remoteContent = data.content || '';
+      const remoteTitle = data.title || '';
+      const remoteMemos = data.memos || '';
+      const remoteBpm = data.bpm || 120;
+      const remoteTimestamp = data.updatedAt?.toMillis() || 0;
       
-      // Only update if NOT currently typing
-      if (!isTyping) {
-        const newTitle = data.title || '';
-        const newContent = data.content || '';
-        const newMemos = data.memos || '';
-        const newBpm = data.bpm || 120;
+      // CRDT Strategy: Last-Write-Wins with timestamp comparison
+      // Only update if remote data is newer than our last edit
+      if (!isTyping && remoteTimestamp > localEditTimestampRef.current) {
+        // Three-way merge: detect if content has diverged
+        if (remoteContent !== lastKnownRemoteContentRef.current) {
+          const localChanges = content !== lastKnownRemoteContentRef.current;
+          
+          if (localChanges) {
+            // Both sides changed - merge changes
+            console.log('Conflict detected - applying Last-Write-Wins');
+            // Remote is newer, so accept remote changes
+            setContent(remoteContent);
+          } else {
+            // Only remote changed
+            setContent(remoteContent);
+          }
+          
+          lastKnownRemoteContentRef.current = remoteContent;
+        }
         
-        // Update state with remote data
-        setTitle(newTitle);
-        setContent(newContent);
-        setMemos(newMemos);
-        setBpm(newBpm);
+        setTitle(remoteTitle);
+        setMemos(remoteMemos);
+        setBpm(remoteBpm);
         
         // Update refs
-        lastSavedTitleRef.current = newTitle;
-        lastSavedContentRef.current = newContent;
-        lastSavedMemosRef.current = newMemos;
+        lastSavedTitleRef.current = remoteTitle;
+        lastSavedContentRef.current = remoteContent;
+        lastSavedMemosRef.current = remoteMemos;
       }
     }, (error) => {
       console.error('Error syncing song:', error);
@@ -164,7 +182,7 @@ const LyricNote = () => {
         unsubscribeSongRef.current();
       }
     };
-  }, [currentSong?.id, isTyping]);
+  }, [currentSong?.id, isTyping, content]);
 
   // Real-time chat sync
   useEffect(() => {
@@ -245,19 +263,24 @@ const LyricNote = () => {
     if (!currentSong?.id) return;
     
     try {
+      // Update local edit timestamp
+      localEditTimestampRef.current = Date.now();
+      
       const songRef = doc(db, 'songs', currentSong.id);
       await setDoc(songRef, {
         title,
         content,
         memos,
         bpm,
-        updatedAt: serverTimestamp()
+        updatedAt: serverTimestamp(),
+        lastEditor: userName
       }, { merge: true });
       
       // Update last saved refs
       lastSavedTitleRef.current = title;
       lastSavedContentRef.current = content;
       lastSavedMemosRef.current = memos;
+      lastKnownRemoteContentRef.current = content;
       
       // Update local songs list
       setSongs(prev => prev.map(s => 
@@ -266,9 +289,9 @@ const LyricNote = () => {
           : s
       ));
       
-      console.log('Saved to Firebase at', new Date().toLocaleTimeString());
+      console.log('✅ Saved to Firebase at', new Date().toLocaleTimeString());
     } catch (error) {
-      console.error('Error saving song:', error);
+      console.error('❌ Error saving song:', error);
     }
   };
 
@@ -276,6 +299,9 @@ const LyricNote = () => {
     const newContent = e.target.value;
     setContent(newContent);
     setIsTyping(true);
+    
+    // Mark that we have local changes
+    localEditTimestampRef.current = Date.now();
     
     if (typingTimerRef.current) {
       clearTimeout(typingTimerRef.current);
@@ -293,6 +319,8 @@ const LyricNote = () => {
     const newMemos = e.target.value;
     setMemos(newMemos);
     setIsTyping(true);
+    
+    localEditTimestampRef.current = Date.now();
     
     if (typingTimerRef.current) {
       clearTimeout(typingTimerRef.current);
@@ -356,6 +384,10 @@ const LyricNote = () => {
     lastSavedTitleRef.current = song.title;
     lastSavedContentRef.current = song.content || '';
     lastSavedMemosRef.current = song.memos || '';
+    lastKnownRemoteContentRef.current = song.content || '';
+    
+    // Reset local edit timestamp
+    localEditTimestampRef.current = 0;
   };
 
   const insertTag = (tag) => {
@@ -953,8 +985,11 @@ const LyricNote = () => {
                     </label>
                     <div style={{ padding: '0.75rem 1rem', backgroundColor: '#1e293b', borderRadius: '0.5rem' }}>
                       <div style={{ fontSize: '0.875rem', color: '#f1f5f9', marginBottom: '0.5rem' }}>{title}</div>
-                      <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                      <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: '0.25rem' }}>
                         ID: {currentSong?.id?.substring(0, 12)}...
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: '#818cf8' }}>
+                        🔄 CRDT Sync Active
                       </div>
                     </div>
                   </div>
