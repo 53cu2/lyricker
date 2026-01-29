@@ -7,6 +7,7 @@ import {
   setDoc, 
   getDoc,
   getDocs,
+  deleteDoc,
   onSnapshot, 
   serverTimestamp,
   query,
@@ -62,6 +63,7 @@ const LyricNote = () => {
   const [rightPanelTab, setRightPanelTab] = useState('ideas'); // 'ideas', 'chat', 'settings'
   const [isMobile, setIsMobile] = useState(false);
   const [mobileSidebarTab, setMobileSidebarTab] = useState('sessions'); // 'sessions', 'writing', 'lyrics'
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   
   const typingTimerRef = useRef(null);
   const saveTimerRef = useRef(null);
@@ -455,6 +457,33 @@ const LyricNote = () => {
     }
   };
 
+  const deleteSong = async (songId) => {
+    try {
+      // Delete from Firebase
+      const songRef = doc(db, 'songs', songId);
+      await deleteDoc(songRef);
+      
+      // Update local state
+      setSongs(prev => prev.filter(s => s.id !== songId));
+      
+      // If deleting current song, switch to another or create new
+      if (currentSong?.id === songId) {
+        const remainingSongs = songs.filter(s => s.id !== songId);
+        if (remainingSongs.length > 0) {
+          selectSong(remainingSongs[0]);
+        } else {
+          // Create new session if no songs left
+          await createNewSession();
+        }
+      }
+      
+      setDeleteConfirmId(null);
+      console.log('🗑️ Song deleted:', songId);
+    } catch (error) {
+      console.error('Error deleting song:', error);
+    }
+  };
+
   const tags = ['Intro', 'Verse', 'Chorus', 'Bridge', 'Outro', 'Hook'];
 
   const containerStyle = {
@@ -675,33 +704,110 @@ const LyricNote = () => {
                 Sessions
               </h2>
               {songs.map(song => (
-                <button
+                <div
                   key={song.id}
-                  onClick={() => {
-                    selectSong(song);
-                    if (isMobile) {
-                      setSidebarOpen(false);
-                    }
-                  }}
                   style={{
                     width: '100%',
-                    textAlign: 'left',
-                    padding: '1rem',
-                    borderRadius: '0.5rem',
                     marginBottom: '0.5rem',
-                    backgroundColor: currentSong?.id === song.id ? '#4f46e5' : '#1e293b',
-                    color: currentSong?.id === song.id ? 'white' : '#cbd5e1',
-                    border: 'none',
-                    cursor: 'pointer'
+                    position: 'relative'
                   }}
                 >
-                  <div style={{ fontWeight: '600', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {song.title}
-                  </div>
-                  <div style={{ fontSize: '0.75rem', opacity: 0.7, marginTop: '0.25rem' }}>
-                    {new Date(song.updatedAt).toLocaleDateString()}
-                  </div>
-                </button>
+                  <button
+                    onClick={() => {
+                      selectSong(song);
+                      if (isMobile) {
+                        setSidebarOpen(false);
+                      }
+                    }}
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '1rem',
+                      paddingRight: '2.5rem',
+                      borderRadius: '0.5rem',
+                      backgroundColor: currentSong?.id === song.id ? '#4f46e5' : '#1e293b',
+                      color: currentSong?.id === song.id ? 'white' : '#cbd5e1',
+                      border: 'none',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <div style={{ fontWeight: '600', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {song.title}
+                    </div>
+                    <div style={{ fontSize: '0.75rem', opacity: 0.7, marginTop: '0.25rem' }}>
+                      {new Date(song.updatedAt).toLocaleDateString()}
+                    </div>
+                  </button>
+                  
+                  {/* Delete Button */}
+                  {deleteConfirmId === song.id ? (
+                    <div style={{
+                      position: 'absolute',
+                      top: 0,
+                      right: 0,
+                      height: '100%',
+                      display: 'flex',
+                      gap: '0.25rem',
+                      alignItems: 'center',
+                      paddingRight: '0.5rem'
+                    }}>
+                      <button
+                        onClick={() => deleteSong(song.id)}
+                        style={{
+                          padding: '0.4rem 0.6rem',
+                          backgroundColor: '#ef4444',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '0.375rem',
+                          cursor: 'pointer',
+                          fontSize: '0.75rem',
+                          fontWeight: '600'
+                        }}
+                      >
+                        Delete
+                      </button>
+                      <button
+                        onClick={() => setDeleteConfirmId(null)}
+                        style={{
+                          padding: '0.4rem 0.6rem',
+                          backgroundColor: '#1e293b',
+                          color: '#cbd5e1',
+                          border: 'none',
+                          borderRadius: '0.375rem',
+                          cursor: 'pointer',
+                          fontSize: '0.75rem'
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeleteConfirmId(song.id);
+                      }}
+                      style={{
+                        position: 'absolute',
+                        top: '50%',
+                        right: '0.5rem',
+                        transform: 'translateY(-50%)',
+                        padding: '0.4rem',
+                        backgroundColor: 'transparent',
+                        color: currentSong?.id === song.id ? 'white' : '#94a3b8',
+                        border: 'none',
+                        borderRadius: '0.375rem',
+                        cursor: 'pointer',
+                        opacity: 0.6,
+                        transition: 'opacity 0.2s'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                      onMouseLeave={(e) => e.currentTarget.style.opacity = '0.6'}
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
+                </div>
               ))}
             </div>
           </>
