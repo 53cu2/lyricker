@@ -133,29 +133,27 @@ const LyricNote = () => {
     const songRef = doc(db, 'songs', currentSong.id);
     
     unsubscribeSongRef.current = onSnapshot(songRef, (snapshot) => {
-      // CRITICAL: Only update if NOT currently typing
-      if (snapshot.exists() && !isTyping) {
-        const data = snapshot.data();
-        
-        // Only update if data is different from what we have locally
+      if (!snapshot.exists()) return;
+      
+      const data = snapshot.data();
+      
+      // Only update if NOT currently typing
+      if (!isTyping) {
         const newTitle = data.title || '';
         const newContent = data.content || '';
         const newMemos = data.memos || '';
         const newBpm = data.bpm || 120;
         
-        // Update only if remote data is different and we're not typing
-        if (newTitle !== title && newTitle !== lastSavedTitleRef.current) {
-          setTitle(newTitle);
-        }
-        if (newContent !== content && newContent !== lastSavedContentRef.current) {
-          setContent(newContent);
-        }
-        if (newMemos !== memos && newMemos !== lastSavedMemosRef.current) {
-          setMemos(newMemos);
-        }
-        if (newBpm !== bpm) {
-          setBpm(newBpm);
-        }
+        // Update state with remote data
+        setTitle(newTitle);
+        setContent(newContent);
+        setMemos(newMemos);
+        setBpm(newBpm);
+        
+        // Update refs
+        lastSavedTitleRef.current = newTitle;
+        lastSavedContentRef.current = newContent;
+        lastSavedMemosRef.current = newMemos;
       }
     }, (error) => {
       console.error('Error syncing song:', error);
@@ -166,7 +164,7 @@ const LyricNote = () => {
         unsubscribeSongRef.current();
       }
     };
-  }, [currentSong?.id]);
+  }, [currentSong?.id, isTyping]);
 
   // Real-time chat sync
   useEffect(() => {
@@ -214,24 +212,8 @@ const LyricNote = () => {
     }
   }, [isEditingTitle]);
 
-  // Auto-save to Firebase
-  useEffect(() => {
-    if (!currentSong?.id || isTyping) return;
-    
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current);
-    }
-    
-    saveTimerRef.current = setTimeout(() => {
-      saveSongToFirebase();
-    }, 500);
-    
-    return () => {
-      if (saveTimerRef.current) {
-        clearTimeout(saveTimerRef.current);
-      }
-    };
-  }, [title, content, memos, bpm]);
+  // Auto-save to Firebase (removed - now handled by typing timeout)
+  // Keeping only the 10-second interval as backup
 
   // 10-second auto-save interval
   useEffect(() => {
@@ -299,10 +281,12 @@ const LyricNote = () => {
       clearTimeout(typingTimerRef.current);
     }
     
-    // Extend typing state for 3 seconds after last keystroke
+    // Typing state ends 1.5 seconds after last keystroke
     typingTimerRef.current = setTimeout(() => {
       setIsTyping(false);
-    }, 3000);
+      // Save immediately after typing stops
+      saveSongToFirebase();
+    }, 1500);
   };
 
   const handleMemosChange = (e) => {
@@ -316,7 +300,9 @@ const LyricNote = () => {
     
     typingTimerRef.current = setTimeout(() => {
       setIsTyping(false);
-    }, 3000);
+      // Save immediately after typing stops
+      saveSongToFirebase();
+    }, 1500);
   };
 
   const createNewSession = async () => {
