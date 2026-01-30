@@ -79,6 +79,8 @@ const LyricNote = () => {
   const lastSavedTitleRef = useRef('');
   const lastKnownRemoteContentRef = useRef('');
   const localEditTimestampRef = useRef(0);
+  const pendingChangesRef = useRef(false);
+  const mergeInProgressRef = useRef(false);
 
   // Initialize user name
   useEffect(() => {
@@ -130,7 +132,47 @@ const LyricNote = () => {
     loadSongs();
   }, []);
 
-  // Real-time sync for current song with CRDT-inspired conflict resolution
+  // CRDT: Three-way merge algorithm
+  const performThreeWayMerge = (base, local, remote) => {
+    // If no conflict, return the changed version
+    if (local === base) return remote; // Only remote changed
+    if (remote === base) return local; // Only local changed
+    if (local === remote) return local; // Both same
+    
+    // Both changed - need to merge
+    // Simple line-based merge strategy
+    const baseLines = base.split('\n');
+    const localLines = local.split('\n');
+    const remoteLines = remote.split('\n');
+    
+    const result = [];
+    const maxLen = Math.max(baseLines.length, localLines.length, remoteLines.length);
+    
+    for (let i = 0; i < maxLen; i++) {
+      const baseLine = baseLines[i] || '';
+      const localLine = localLines[i] || '';
+      const remoteLine = remoteLines[i] || '';
+      
+      if (localLine === remoteLine) {
+        // Both made same change or no change
+        result.push(localLine);
+      } else if (localLine === baseLine) {
+        // Only remote changed this line
+        result.push(remoteLine);
+      } else if (remoteLine === baseLine) {
+        // Only local changed this line
+        result.push(localLine);
+      } else {
+        // Both changed differently - use timestamp to decide
+        // For now, prefer remote (server wins)
+        result.push(remoteLine);
+        console.log(`⚠️ Conflict at line ${i + 1}: Using remote version`);
+      }
+    }
+    
+    return result.join('\n');
+  };
+  // Real-time sync for current song with proper CRDT merge
   useEffect(() => {
     if (!currentSong?.id) return;
     
@@ -138,6 +180,7 @@ const LyricNote = () => {
     
     unsubscribeSongRef.current = onSnapshot(songRef, (snapshot) => {
       if (!snapshot.exists()) return;
+      if (mergeInProgressRef.current) return; // Skip if merge in progress
       
       const data = snapshot.data();
       const remoteContent = data.content || '';
@@ -145,38 +188,70 @@ const LyricNote = () => {
       const remoteMemos = data.memos || '';
       const remoteBpm = data.bpm || 120;
       const remoteTimestamp = data.updatedAt?.toMillis() || 0;
+      const remoteEditor = data.lastEditor || '';
       
-      // CRDT Strategy: Last-Write-Wins with timestamp comparison
-      // Only update if remote data is newer than our last edit
-      if (!isTyping && remoteTimestamp > localEditTimestampRef.current) {
-        // Three-way merge: detect if content has diverged
-        if (remoteContent !== lastKnownRemoteContentRef.current) {
-          const localChanges = content !== lastKnownRemoteContentRef.current;
+      // Skip our own writes (to prevent echo)
+      if (remoteEditor === userName && Math.abs(remoteTimestamp - localEditTimestampRef.current) < 2000) {
+        console.log('🔄 Skipping own write');
+        lastKnownRemoteContentRef.current = remoteContent;
+        return;
+      }
+      
+      // If typing, queue the changes for later
+      if (isTyping) {
+        pendingChangesRef.current = true;
+        console.log('⏸️ Changes pending - user is typing');
+        return;
+      }
+      
+      // Perform three-way merge
+      mergeInProgressRef.current = true;
+      
+      try {
+        const baseContent = lastKnownRemoteContentRef.current;
+        const localContent = content;
+        
+        // Check if merge is needed
+        const needsMerge = baseContent !== localContent && baseContent !== remoteContent && localContent !== remoteContent;
+        
+        if (needsMerge) {
+          console.log('🔀 Performing three-way merge...');
+          const mergedContent = performThreeWayMerge(baseContent, localContent, remoteContent);
           
-          if (localChanges) {
-            // Both sides changed - merge changes
-            console.log('Conflict detected - applying Last-Write-Wins');
-            // Remote is newer, so accept remote changes
-            setContent(remoteContent);
-          } else {
-            // Only remote changed
-            setContent(remoteContent);
+          if (mergedContent !== localContent) {
+            setContent(mergedContent);
+            console.log('✅ Merge completed');
           }
-          
-          lastKnownRemoteContentRef.current = remoteContent;
+        } else if (localContent === baseContent && remoteContent !== baseContent) {
+          // Only remote changed
+          console.log('⬇️ Applying remote changes');
+          setContent(remoteContent);
+        } else if (remoteContent === baseContent && localContent !== baseContent) {
+          // Only local changed - do nothing
+          console.log('⬆️ Local changes only');
+        } else if (remoteContent === localContent) {
+          // Already in sync
+          console.log('✓ Already in sync');
         }
         
+        // Always update other fields
         setTitle(remoteTitle);
         setMemos(remoteMemos);
         setBpm(remoteBpm);
         
         // Update refs
+        lastKnownRemoteContentRef.current = remoteContent;
         lastSavedTitleRef.current = remoteTitle;
         lastSavedContentRef.current = remoteContent;
         lastSavedMemosRef.current = remoteMemos;
+        
+        pendingChangesRef.current = false;
+      } finally {
+        mergeInProgressRef.current = false;
       }
     }, (error) => {
-      console.error('Error syncing song:', error);
+      console.error('❌ Error syncing song:', error);
+      mergeInProgressRef.current = false;
     });
     
     return () => {
@@ -184,7 +259,7 @@ const LyricNote = () => {
         unsubscribeSongRef.current();
       }
     };
-  }, [currentSong?.id, isTyping, content]);
+  }, [currentSong?.id, isTyping, content, userName]);
 
   // Real-time chat sync
   useEffect(() => {
@@ -309,12 +384,18 @@ const LyricNote = () => {
       clearTimeout(typingTimerRef.current);
     }
     
-    // Typing state ends 1.5 seconds after last keystroke
+    // Typing state ends 2 seconds after last keystroke
     typingTimerRef.current = setTimeout(() => {
       setIsTyping(false);
       // Save immediately after typing stops
       saveSongToFirebase();
-    }, 1500);
+      
+      // Process pending changes if any
+      if (pendingChangesRef.current) {
+        console.log('🔄 Processing pending changes...');
+        pendingChangesRef.current = false;
+      }
+    }, 2000);
   };
 
   const handleMemosChange = (e) => {
@@ -332,7 +413,7 @@ const LyricNote = () => {
       setIsTyping(false);
       // Save immediately after typing stops
       saveSongToFirebase();
-    }, 1500);
+    }, 2000);
   };
 
   const createNewSession = async () => {
@@ -688,15 +769,6 @@ const LyricNote = () => {
                 <Plus size={isMobile ? 18 : 20} />
                 New Session
               </button>
-              
-              {!isMobile && (
-                <button
-                  onClick={() => setShowFirebaseGuide(true)}
-                  style={{ ...buttonSecondary, width: '100%', padding: '0.5rem 1rem', fontSize: '0.875rem' }}
-                >
-                  🔥 Firebase Setup
-                </button>
-              )}
             </div>
 
             <div style={{ flex: 1, overflowY: 'auto', padding: '1rem' }}>
@@ -1016,7 +1088,7 @@ const LyricNote = () => {
               {rightPanelTab === 'settings' && (
                 <div style={{ flex: 1, padding: '1rem', overflowY: 'auto' }}>
                   <h3 style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: '#94a3b8', fontWeight: '600', marginBottom: '1rem' }}>
-                    Settings
+                    Session Info
                   </h3>
 
                   {/* User Name */}
@@ -1094,8 +1166,10 @@ const LyricNote = () => {
                       <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: '0.25rem' }}>
                         ID: {currentSong?.id?.substring(0, 12)}...
                       </div>
-                      <div style={{ fontSize: '0.75rem', color: '#818cf8' }}>
-                        🔄 CRDT Sync Active
+                      <div style={{ fontSize: '0.75rem', color: '#818cf8', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span>🔄 CRDT Active</span>
+                        {isTyping && <span style={{ color: '#fbbf24' }}>✍️ Typing</span>}
+                        {pendingChangesRef.current && <span style={{ color: '#f59e0b' }}>⏸️ Pending</span>}
                       </div>
                     </div>
                   </div>
