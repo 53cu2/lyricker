@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Music, Share2, Plus, Menu, X, ChevronRight, Check, MessageCircle, Send, Edit2, Save } from 'lucide-react';
 import { db } from './firebase';
+import { mergeTextCrdt } from './crdt';
 import { 
   collection, 
   doc, 
@@ -132,46 +133,6 @@ const LyricNote = () => {
     loadSongs();
   }, []);
 
-  // CRDT: Three-way merge algorithm
-  const performThreeWayMerge = (base, local, remote) => {
-    // If no conflict, return the changed version
-    if (local === base) return remote; // Only remote changed
-    if (remote === base) return local; // Only local changed
-    if (local === remote) return local; // Both same
-    
-    // Both changed - need to merge
-    // Simple line-based merge strategy
-    const baseLines = base.split('\n');
-    const localLines = local.split('\n');
-    const remoteLines = remote.split('\n');
-    
-    const result = [];
-    const maxLen = Math.max(baseLines.length, localLines.length, remoteLines.length);
-    
-    for (let i = 0; i < maxLen; i++) {
-      const baseLine = baseLines[i] || '';
-      const localLine = localLines[i] || '';
-      const remoteLine = remoteLines[i] || '';
-      
-      if (localLine === remoteLine) {
-        // Both made same change or no change
-        result.push(localLine);
-      } else if (localLine === baseLine) {
-        // Only remote changed this line
-        result.push(remoteLine);
-      } else if (remoteLine === baseLine) {
-        // Only local changed this line
-        result.push(localLine);
-      } else {
-        // Both changed differently - use timestamp to decide
-        // For now, prefer remote (server wins)
-        result.push(remoteLine);
-        console.log(`⚠️ Conflict at line ${i + 1}: Using remote version`);
-      }
-    }
-    
-    return result.join('\n');
-  };
   // Real-time sync for current song with proper CRDT merge
   useEffect(() => {
     if (!currentSong?.id) return;
@@ -216,7 +177,11 @@ const LyricNote = () => {
         
         if (needsMerge) {
           console.log('🔀 Performing three-way merge...');
-          const mergedContent = performThreeWayMerge(baseContent, localContent, remoteContent);
+          const mergedContent = mergeTextCrdt({
+            base: baseContent,
+            local: localContent,
+            remote: remoteContent
+          });
           
           if (mergedContent !== localContent) {
             setContent(mergedContent);
