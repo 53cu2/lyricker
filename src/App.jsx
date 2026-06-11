@@ -67,21 +67,56 @@ const LyricNote = () => {
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   
   const typingTimerRef = useRef(null);
-  const saveTimerRef = useRef(null);
   const autoSaveIntervalRef = useRef(null);
-  const contentRef = useRef(null);
   const chatEndRef = useRef(null);
   const titleInputRef = useRef(null);
   const nameInputRef = useRef(null);
   const unsubscribeSongRef = useRef(null);
   const unsubscribeChatRef = useRef(null);
-  const lastSavedContentRef = useRef('');
-  const lastSavedMemosRef = useRef('');
-  const lastSavedTitleRef = useRef('');
-  const lastKnownRemoteContentRef = useRef('');
-  const localEditTimestampRef = useRef(0);
-  const pendingChangesRef = useRef(false);
-  const mergeInProgressRef = useRef(false);
+  const draftRef = useRef({ title: '', content: '', memos: '', bpm: 120 });
+  const lastRemoteSongRef = useRef({ title: '', content: '', memos: '', bpm: 120 });
+
+
+  const syncDraftRef = (nextDraft) => {
+    draftRef.current = {
+      ...draftRef.current,
+      ...nextDraft
+    };
+  };
+
+  const setSongDraft = (nextDraft) => {
+    syncDraftRef(nextDraft);
+
+    if (Object.prototype.hasOwnProperty.call(nextDraft, 'title')) setTitle(nextDraft.title);
+    if (Object.prototype.hasOwnProperty.call(nextDraft, 'content')) setContent(nextDraft.content);
+    if (Object.prototype.hasOwnProperty.call(nextDraft, 'memos')) setMemos(nextDraft.memos);
+    if (Object.prototype.hasOwnProperty.call(nextDraft, 'bpm')) setBpm(nextDraft.bpm);
+  };
+
+  const isFieldDirty = (field) => draftRef.current[field] !== lastRemoteSongRef.current[field];
+
+  const applyRemoteSong = (remoteSong) => {
+    const currentDraft = draftRef.current;
+    const lastRemote = lastRemoteSongRef.current;
+
+    const nextDraft = {
+      title: isFieldDirty('title') ? currentDraft.title : remoteSong.title,
+      content: mergeTextCrdt({
+        base: lastRemote.content,
+        local: currentDraft.content,
+        remote: remoteSong.content
+      }),
+      memos: mergeTextCrdt({
+        base: lastRemote.memos,
+        local: currentDraft.memos,
+        remote: remoteSong.memos
+      }),
+      bpm: isFieldDirty('bpm') ? currentDraft.bpm : remoteSong.bpm
+    };
+
+    lastRemoteSongRef.current = remoteSong;
+    setSongDraft(nextDraft);
+  };
 
   // Initialize user name
   useEffect(() => {
@@ -133,98 +168,39 @@ const LyricNote = () => {
     loadSongs();
   }, []);
 
-  // Real-time sync for current song with proper CRDT merge
+  // Real-time sync for current song. Keep the listener small: Firestore is the
+  // remote baseline, local unsaved edits stay in draftRef, and text fields use
+  // one deterministic three-way merge when both sides changed.
   useEffect(() => {
     if (!currentSong?.id) return;
-    
+
     const songRef = doc(db, 'songs', currentSong.id);
-    
+
+    let isActive = true;
+
     unsubscribeSongRef.current = onSnapshot(songRef, (snapshot) => {
-      if (!snapshot.exists()) return;
-      if (mergeInProgressRef.current) return; // Skip if merge in progress
-      
+      if (!isActive || !snapshot.exists()) return;
+
       const data = snapshot.data();
-      const remoteContent = data.content || '';
-      const remoteTitle = data.title || '';
-      const remoteMemos = data.memos || '';
-      const remoteBpm = data.bpm || 120;
-      const remoteTimestamp = data.updatedAt?.toMillis() || 0;
-      const remoteEditor = data.lastEditor || '';
-      
-      // Skip our own writes (to prevent echo)
-      if (remoteEditor === userName && Math.abs(remoteTimestamp - localEditTimestampRef.current) < 2000) {
-        console.log('🔄 Skipping own write');
-        lastKnownRemoteContentRef.current = remoteContent;
-        return;
-      }
-      
-      // If typing, queue the changes for later
-      if (isTyping) {
-        pendingChangesRef.current = true;
-        console.log('⏸️ Changes pending - user is typing');
-        return;
-      }
-      
-      // Perform three-way merge
-      mergeInProgressRef.current = true;
-      
-      try {
-        const baseContent = lastKnownRemoteContentRef.current;
-        const localContent = content;
-        
-        // Check if merge is needed
-        const needsMerge = baseContent !== localContent && baseContent !== remoteContent && localContent !== remoteContent;
-        
-        if (needsMerge) {
-          console.log('🔀 Performing three-way merge...');
-          const mergedContent = mergeTextCrdt({
-            base: baseContent,
-            local: localContent,
-            remote: remoteContent
-          });
-          
-          if (mergedContent !== localContent) {
-            setContent(mergedContent);
-            console.log('✅ Merge completed');
-          }
-        } else if (localContent === baseContent && remoteContent !== baseContent) {
-          // Only remote changed
-          console.log('⬇️ Applying remote changes');
-          setContent(remoteContent);
-        } else if (remoteContent === baseContent && localContent !== baseContent) {
-          // Only local changed - do nothing
-          console.log('⬆️ Local changes only');
-        } else if (remoteContent === localContent) {
-          // Already in sync
-          console.log('✓ Already in sync');
-        }
-        
-        // Always update other fields
-        setTitle(remoteTitle);
-        setMemos(remoteMemos);
-        setBpm(remoteBpm);
-        
-        // Update refs
-        lastKnownRemoteContentRef.current = remoteContent;
-        lastSavedTitleRef.current = remoteTitle;
-        lastSavedContentRef.current = remoteContent;
-        lastSavedMemosRef.current = remoteMemos;
-        
-        pendingChangesRef.current = false;
-      } finally {
-        mergeInProgressRef.current = false;
-      }
+      const remoteSong = {
+        title: data.title || '',
+        content: data.content || '',
+        memos: data.memos || '',
+        bpm: data.bpm || 120
+      };
+
+      applyRemoteSong(remoteSong);
     }, (error) => {
       console.error('❌ Error syncing song:', error);
-      mergeInProgressRef.current = false;
     });
-    
+
     return () => {
+      isActive = false;
       if (unsubscribeSongRef.current) {
         unsubscribeSongRef.current();
       }
     };
-  }, [currentSong?.id, isTyping, content, userName]);
+  }, [currentSong?.id]);
 
   // Real-time chat sync
   useEffect(() => {
@@ -287,9 +263,12 @@ const LyricNote = () => {
     // Set up new interval
     autoSaveIntervalRef.current = setInterval(() => {
       // Force save every 10 seconds if there are changes
-      if (title !== lastSavedTitleRef.current || 
-          content !== lastSavedContentRef.current || 
-          memos !== lastSavedMemosRef.current) {
+      const draft = draftRef.current;
+      const lastRemote = lastRemoteSongRef.current;
+      if (draft.title !== lastRemote.title ||
+          draft.content !== lastRemote.content ||
+          draft.memos !== lastRemote.memos ||
+          draft.bpm !== lastRemote.bpm) {
         saveSongToFirebase();
       }
     }, 10000); // 10 seconds
@@ -303,82 +282,65 @@ const LyricNote = () => {
 
   const saveSongToFirebase = async () => {
     if (!currentSong?.id) return;
-    
+
+    const draft = draftRef.current;
+
     try {
-      // Update local edit timestamp
-      localEditTimestampRef.current = Date.now();
-      
       const songRef = doc(db, 'songs', currentSong.id);
       await setDoc(songRef, {
-        title,
-        content,
-        memos,
-        bpm,
+        title: draft.title,
+        content: draft.content,
+        memos: draft.memos,
+        bpm: draft.bpm,
         updatedAt: serverTimestamp(),
         lastEditor: userName
       }, { merge: true });
-      
-      // Update last saved refs
-      lastSavedTitleRef.current = title;
-      lastSavedContentRef.current = content;
-      lastSavedMemosRef.current = memos;
-      lastKnownRemoteContentRef.current = content;
-      
+
+      lastRemoteSongRef.current = { ...draft };
+
       // Update local songs list
-      setSongs(prev => prev.map(s => 
-        s.id === currentSong.id 
-          ? { ...s, title, content, memos, bpm, updatedAt: new Date() }
+      setSongs(prev => prev.map(s =>
+        s.id === currentSong.id
+          ? { ...s, ...draft, updatedAt: new Date() }
           : s
       ));
-      
+
       console.log('✅ Saved to Firebase at', new Date().toLocaleTimeString());
     } catch (error) {
       console.error('❌ Error saving song:', error);
     }
   };
 
-  const handleContentChange = (e) => {
-    const newContent = e.target.value;
-    setContent(newContent);
+  const clearTypingTimer = () => {
+    if (typingTimerRef.current) {
+      clearTimeout(typingTimerRef.current);
+      typingTimerRef.current = null;
+    }
+
+    setIsTyping(false);
+  };
+
+  const markTypingAndSaveSoon = () => {
     setIsTyping(true);
-    
-    // Mark that we have local changes
-    localEditTimestampRef.current = Date.now();
-    
+
     if (typingTimerRef.current) {
       clearTimeout(typingTimerRef.current);
     }
-    
-    // Typing state ends 2 seconds after last keystroke
+
     typingTimerRef.current = setTimeout(() => {
       setIsTyping(false);
-      // Save immediately after typing stops
       saveSongToFirebase();
-      
-      // Process pending changes if any
-      if (pendingChangesRef.current) {
-        console.log('🔄 Processing pending changes...');
-        pendingChangesRef.current = false;
-      }
     }, 2000);
   };
 
+  const handleContentChange = (e) => {
+    setSongDraft({ content: e.target.value });
+    markTypingAndSaveSoon();
+  };
+
   const handleMemosChange = (e) => {
-    const newMemos = e.target.value;
-    setMemos(newMemos);
-    setIsTyping(true);
-    
-    localEditTimestampRef.current = Date.now();
-    
-    if (typingTimerRef.current) {
-      clearTimeout(typingTimerRef.current);
-    }
-    
-    typingTimerRef.current = setTimeout(() => {
-      setIsTyping(false);
-      // Save immediately after typing stops
-      saveSongToFirebase();
-    }, 2000);
+    setSongDraft({ memos: e.target.value });
+    markTypingAndSaveSoon();
   };
 
   const createNewSession = async () => {
@@ -403,11 +365,10 @@ const LyricNote = () => {
       };
       
       setSongs(prev => [newSong, ...prev]);
+      clearTypingTimer();
       setCurrentSong(newSong);
-      setTitle(newSong.title);
-      setContent('');
-      setMemos('');
-      setBpm(120);
+      lastRemoteSongRef.current = { title: newSong.title, content: '', memos: '', bpm: 120 };
+      setSongDraft(lastRemoteSongRef.current);
       
       // Add welcome message
       const messagesRef = collection(db, 'songs', newSongId, 'messages');
@@ -422,25 +383,21 @@ const LyricNote = () => {
   };
 
   const selectSong = async (song) => {
+    clearTypingTimer();
     setCurrentSong(song);
-    setTitle(song.title);
-    setContent(song.content || '');
-    setMemos(song.memos || '');
-    setBpm(song.bpm || 120);
-    
-    // Update last saved refs
-    lastSavedTitleRef.current = song.title;
-    lastSavedContentRef.current = song.content || '';
-    lastSavedMemosRef.current = song.memos || '';
-    lastKnownRemoteContentRef.current = song.content || '';
-    
-    // Reset local edit timestamp
-    localEditTimestampRef.current = 0;
+    const selectedDraft = {
+      title: song.title,
+      content: song.content || '',
+      memos: song.memos || '',
+      bpm: song.bpm || 120
+    };
+    lastRemoteSongRef.current = selectedDraft;
+    setSongDraft(selectedDraft);
   };
 
   const insertTag = (tag) => {
-    const newContent = content + `\n\n[${tag}]\n`;
-    setContent(newContent);
+    const newContent = `${draftRef.current.content}\n\n[${tag}]\n`;
+    setSongDraft({ content: newContent });
   };
 
   const handleShare = () => {
@@ -459,7 +416,7 @@ const LyricNote = () => {
     if (e.key === 'Enter') {
       handleTitleSave();
     } else if (e.key === 'Escape') {
-      setTitle(currentSong?.title || '');
+      setSongDraft({ title: lastRemoteSongRef.current.title });
       setIsEditingTitle(false);
     }
   };
@@ -1134,7 +1091,6 @@ const LyricNote = () => {
                       <div style={{ fontSize: '0.75rem', color: '#818cf8', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <span>🔄 CRDT Active</span>
                         {isTyping && <span style={{ color: '#fbbf24' }}>✍️ Typing</span>}
-                        {pendingChangesRef.current && <span style={{ color: '#f59e0b' }}>⏸️ Pending</span>}
                       </div>
                     </div>
                   </div>
@@ -1162,7 +1118,7 @@ const LyricNote = () => {
                   ref={titleInputRef}
                   type="text"
                   value={title}
-                  onChange={(e) => setTitle(e.target.value)}
+                  onChange={(e) => setSongDraft({ title: e.target.value })}
                   onKeyDown={handleTitleKeyPress}
                   onBlur={handleTitleSave}
                   style={{ ...inputStyle, fontSize: isMobile ? '1rem' : '1.5rem', fontWeight: 'bold', width: isMobile ? '100%' : '400px' }}
@@ -1188,7 +1144,7 @@ const LyricNote = () => {
               <input
                 type="number"
                 value={bpm}
-                onChange={(e) => setBpm(parseInt(e.target.value) || 120)}
+                onChange={(e) => setSongDraft({ bpm: parseInt(e.target.value, 10) || 120 })}
                 style={{ backgroundColor: 'transparent', width: isMobile ? '48px' : '64px', textAlign: 'center', outline: 'none', border: 'none', color: '#f1f5f9', fontSize: isMobile ? '0.875rem' : '1rem' }}
               />
               <span style={{ fontSize: isMobile ? '0.625rem' : '0.75rem', color: '#94a3b8' }}>BPM</span>
@@ -1252,7 +1208,6 @@ const LyricNote = () => {
           {/* Main Editor */}
           <div style={{ flex: 1, padding: isMobile ? '0.75rem' : '2rem', overflowY: 'auto' }}>
             <textarea
-              ref={contentRef}
               value={content}
               onChange={handleContentChange}
               style={textareaStyle}
